@@ -49,17 +49,12 @@ const resolveOrientation = ({
         return "PORTRAIT";
     }
 
-
     if (
         orientation === "LANDSCAPE"
     ) {
         return "LANDSCAPE";
     }
 
-
-    /*
-     * AUTO
-     */
     return (
         sourceWidth >= sourceHeight
             ? "LANDSCAPE"
@@ -69,7 +64,7 @@ const resolveOrientation = ({
 
 
 // =====================================================
-// CREATE ROTATION-AWARE DRAW PARAMETERS
+// ROTATION-AWARE DRAW PARAMETERS
 // =====================================================
 
 const getDrawParameters = ({
@@ -84,15 +79,6 @@ const getDrawParameters = ({
         rotation
     } = placement;
 
-
-    /*
-     * pdf-lib rotates around the supplied
-     * drawing origin.
-     *
-     * We compensate the origin so that
-     * the complete artwork remains inside
-     * the intended placement box.
-     */
 
     switch (rotation) {
 
@@ -146,7 +132,7 @@ const getDrawParameters = ({
 
 
 // =====================================================
-// GET SOURCE PAGE
+// GET SOURCE PAGE DIMENSIONS
 // =====================================================
 
 const getSourcePageDimensions = (
@@ -178,6 +164,59 @@ const getSourcePageDimensions = (
 
 
 // =====================================================
+// NORMALIZE SIGNATURE
+// =====================================================
+//
+// Different signature implementations may return:
+//
+// 1. Array
+//
+// OR
+//
+// 2. { positions: [...] }
+//
+// This function makes the main engine tolerant
+// of both formats.
+//
+
+const normalizeSignature = (
+    signature
+) => {
+
+    if (
+        Array.isArray(signature)
+    ) {
+        return signature;
+    }
+
+
+    if (
+        signature &&
+        Array.isArray(
+            signature.positions
+        )
+    ) {
+        return signature.positions;
+    }
+
+
+    if (
+        signature &&
+        Array.isArray(
+            signature.pages
+        )
+    ) {
+        return signature.pages;
+    }
+
+
+    throw new Error(
+        "Invalid signature returned by signature engine. Expected an array or an object containing positions/pages."
+    );
+};
+
+
+// =====================================================
 // BUILD PLACEMENTS
 // =====================================================
 
@@ -195,37 +234,55 @@ const buildPlacements = ({
         geometry.positions;
 
 
-    /*
-     * Signature positions:
-     *
-     * position
-     * sourcePage
-     * rotation
-     */
+    const signatureAssignments =
+        normalizeSignature(
+            signature
+        );
 
-    signature.forEach(
-        (assignment) => {
+
+    signatureAssignments.forEach(
+        (assignment, index) => {
+
+            /*
+             * Determine physical position.
+             */
+
+            const positionNumber =
+                assignment.position ??
+                assignment.positionNumber ??
+                index + 1;
+
 
             const position =
                 positions[
-                    assignment.position - 1
+                    positionNumber - 1
                 ];
 
 
             if (!position) {
+
                 throw new Error(
-                    `No geometry position found for signature position ${assignment.position}.`
+                    `No geometry position found for signature position ${positionNumber}.`
                 );
             }
 
 
+            /*
+             * Different signature implementations
+             * may use different names.
+             */
+
             const sourcePage =
-                assignment.sourcePage;
+                assignment.sourcePage ??
+                assignment.pageNumber ??
+                assignment.page ??
+                null;
 
 
             /*
-             * Blank position
+             * Blank page
              */
+
             if (
                 sourcePage === null ||
                 sourcePage === undefined
@@ -235,18 +292,33 @@ const buildPlacements = ({
 
 
             /*
-             * Source page must exist
+             * Validate source page
              */
+
             if (
                 sourcePage < 1 ||
                 sourcePage >
                     sourcePageCount
             ) {
+
                 throw new Error(
                     `Signature references invalid source page ${sourcePage}.`
                 );
             }
 
+
+            /*
+             * Rotation
+             */
+
+            const rotation =
+                assignment.rotation ??
+                0;
+
+
+            /*
+             * Create placement
+             */
 
             placements.push(
                 createPlacement({
@@ -266,9 +338,7 @@ const buildPlacements = ({
                     height:
                         position.height,
 
-                    rotation:
-                        assignment.rotation ??
-                        0,
+                    rotation,
 
                     unit: "pt"
                 })
@@ -277,13 +347,11 @@ const buildPlacements = ({
     );
 
 
-    /*
-     * Safety check
-     */
     if (
         placements.length >
         pagesPerLayout
     ) {
+
         throw new Error(
             "Generated placements exceed pages per layout."
         );
@@ -305,6 +373,7 @@ const impositionPdf = async ({
 }) => {
 
     if (!pdfBuffer) {
+
         throw new Error(
             "PDF buffer is required."
         );
@@ -312,7 +381,7 @@ const impositionPdf = async ({
 
 
     // -------------------------------------------------
-    // Normalize configuration
+    // NORMALIZE CONFIG
     // -------------------------------------------------
 
     const normalizedConfig =
@@ -322,7 +391,7 @@ const impositionPdf = async ({
 
 
     // -------------------------------------------------
-    // Load source PDF
+    // LOAD SOURCE PDF
     // -------------------------------------------------
 
     const sourcePdf =
@@ -338,6 +407,7 @@ const impositionPdf = async ({
     if (
         sourcePageCount === 0
     ) {
+
         throw new Error(
             "Source PDF contains no pages."
         );
@@ -345,7 +415,7 @@ const impositionPdf = async ({
 
 
     // -------------------------------------------------
-    // Source page dimensions
+    // SOURCE DIMENSIONS
     // -------------------------------------------------
 
     const sourceDimensions =
@@ -362,7 +432,7 @@ const impositionPdf = async ({
 
 
     // -------------------------------------------------
-    // Orientation
+    // ORIENTATION
     // -------------------------------------------------
 
     const orientation =
@@ -379,7 +449,7 @@ const impositionPdf = async ({
 
 
     // -------------------------------------------------
-    // Calculate production geometry
+    // GEOMETRY
     // -------------------------------------------------
 
     const geometry =
@@ -394,7 +464,7 @@ const impositionPdf = async ({
 
 
     // -------------------------------------------------
-    // Create signature
+    // SIGNATURE
     // -------------------------------------------------
 
     const signature =
@@ -415,7 +485,7 @@ const impositionPdf = async ({
 
 
     // -------------------------------------------------
-    // Repetition
+    // REPETITION
     // -------------------------------------------------
 
     const repetition =
@@ -434,7 +504,7 @@ const impositionPdf = async ({
 
 
     // -------------------------------------------------
-    // Create output PDF
+    // CREATE OUTPUT PDF
     // -------------------------------------------------
 
     const outputPdf =
@@ -442,18 +512,17 @@ const impositionPdf = async ({
 
 
     // -------------------------------------------------
-    // Embed source pages
+    // EMBED SOURCE PAGES
     // -------------------------------------------------
 
     const embeddedPages =
         await outputPdf.embedPages(
-            sourcePdf
-                .getPages()
+            sourcePdf.getPages()
         );
 
 
     // -------------------------------------------------
-    // Fonts
+    // FONT
     // -------------------------------------------------
 
     let font = null;
@@ -473,7 +542,7 @@ const impositionPdf = async ({
 
 
     // -------------------------------------------------
-    // Create one imposed sheet per repetition unit
+    // GENERATED SHEETS
     // -------------------------------------------------
 
     const generatedSheets = [];
@@ -491,12 +560,9 @@ const impositionPdf = async ({
             ]);
 
 
-        /*
-         * Build placements for this sheet.
-         *
-         * At this stage the signature represents
-         * one layout unit.
-         */
+        // -------------------------------------------------
+        // BUILD PLACEMENTS
+        // -------------------------------------------------
 
         const placements =
             buildPlacements({
@@ -515,7 +581,7 @@ const impositionPdf = async ({
 
 
         // -------------------------------------------------
-        // Validate placements
+        // VALIDATE SHEET BOUNDS
         // -------------------------------------------------
 
         const invalidPlacements =
@@ -539,7 +605,7 @@ const impositionPdf = async ({
 
 
         // -------------------------------------------------
-        // Draw source pages
+        // DRAW PAGES
         // -------------------------------------------------
 
         for (
@@ -554,6 +620,7 @@ const impositionPdf = async ({
 
 
             if (!embeddedPage) {
+
                 throw new Error(
                     `Unable to embed source page ${placement.pageNumber}.`
                 );
@@ -569,6 +636,7 @@ const impositionPdf = async ({
             outputPage.drawPage(
                 embeddedPage,
                 {
+
                     x:
                         drawParameters.x,
 
@@ -591,7 +659,7 @@ const impositionPdf = async ({
 
 
         // -------------------------------------------------
-        // Production marks
+        // PRODUCTION MARKS
         // -------------------------------------------------
 
         drawProductionMarks({
@@ -606,8 +674,7 @@ const impositionPdf = async ({
 
             jobInfo:
                 jobInfo ??
-                normalizedConfig
-                    .jobInfo ??
+                normalizedConfig.jobInfo ??
                 null,
 
             font
@@ -615,7 +682,7 @@ const impositionPdf = async ({
 
 
         // -------------------------------------------------
-        // Store sheet information
+        // STORE SHEET DATA
         // -------------------------------------------------
 
         generatedSheets.push({
@@ -638,12 +705,13 @@ const impositionPdf = async ({
 
 
     // -------------------------------------------------
-    // Validate complete plan
+    // VALIDATE FIRST SHEET
     // -------------------------------------------------
 
     const plan = {
 
-        sheet: geometry.sheet,
+        sheet:
+            geometry.sheet,
 
         placements:
             generatedSheets.length > 0
@@ -659,15 +727,19 @@ const impositionPdf = async ({
 
 
     // -------------------------------------------------
-    // Save output
+    // SAVE
     // -------------------------------------------------
 
-    const outputBuffer =
-        await outputPdf.save();
+    // const outputBuffer =
+    //     await outputPdf.save();
 
+    const outputBytes =
+    await outputPdf.save();
 
+const outputBuffer =
+    Buffer.from(outputBytes);
     // -------------------------------------------------
-    // Return production information
+    // RETURN
     // -------------------------------------------------
 
     return {

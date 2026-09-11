@@ -12,16 +12,25 @@ import {
 } from "../engines/imposition/imposition.engine.js";
 
 
-const imposePdf = async (req, res) => {
+// =====================================================
+// IMPOSE PDF
+// =====================================================
+
+const imposePdf = async (
+    req,
+    res
+) => {
 
     try {
 
-        const { jobId } = req.params;
+        const {
+            jobId
+        } = req.params;
 
 
-        // -----------------------------------------
-        // 1. Validate Job ID
-        // -----------------------------------------
+        // -------------------------------------------------
+        // Validate Job ID
+        // -------------------------------------------------
 
         if (
             !mongoose.Types.ObjectId.isValid(
@@ -30,16 +39,18 @@ const imposePdf = async (req, res) => {
         ) {
 
             return res.status(400).json({
-                success: false,
-                message: "Invalid job ID."
-            });
 
+                success: false,
+
+                message:
+                    "Invalid job ID."
+            });
         }
 
 
-        // -----------------------------------------
-        // 2. Find Production Job
-        // -----------------------------------------
+        // -------------------------------------------------
+        // Find Job
+        // -------------------------------------------------
 
         const job =
             await ProductionJob.findById(
@@ -50,37 +61,47 @@ const imposePdf = async (req, res) => {
         if (!job) {
 
             return res.status(404).json({
+
                 success: false,
+
                 message:
                     "Production job not found."
             });
-
         }
 
 
-        // -----------------------------------------
-        // 3. Check Source File
-        // -----------------------------------------
+        // -------------------------------------------------
+        // Validate Source File
+        // -------------------------------------------------
 
         if (!job.fileId) {
 
-            return res.status(404).json({
-                success: false,
-                message:
-                    "Source PDF file not found."
-            });
+            return res.status(400).json({
 
+                success: false,
+
+                message:
+                    "Source PDF file not found for this job."
+            });
         }
 
 
-        // -----------------------------------------
-        // 4. Download Source PDF
-        // -----------------------------------------
+        // -------------------------------------------------
+        // Update Status
+        // -------------------------------------------------
 
-        console.log(
-            `[IMPOSITION CONTROLLER] Downloading source PDF for job ${jobId}`
-        );
+        job.status =
+            "PROCESSING";
 
+        job.errorMessage =
+            undefined;
+
+        await job.save();
+
+
+        // -------------------------------------------------
+        // Download Source PDF
+        // -------------------------------------------------
 
         const inputBuffer =
             await downloadFileFromGridFS(
@@ -88,112 +109,131 @@ const imposePdf = async (req, res) => {
             );
 
 
-        // -----------------------------------------
-        // 5. Update Status
-        // -----------------------------------------
+        if (
+            !Buffer.isBuffer(
+                inputBuffer
+            )
+        ) {
 
-        job.status = "PROCESSING";
+            throw new Error(
+                "Downloaded source PDF is not a Buffer."
+            );
+        }
 
-        job.errorMessage = null;
 
-        await job.save();
+        // -------------------------------------------------
+        // Configuration
+        // -------------------------------------------------
+
+        const config =
+            req.body &&
+            typeof req.body === "object"
+                ? req.body
+                : {};
 
 
-        // -----------------------------------------
-        // 6. Run Imposition Engine
-        // -----------------------------------------
-
-        console.log(
-            `[IMPOSITION CONTROLLER] Starting imposition for job ${jobId}`
-        );
-
+        // -------------------------------------------------
+        // Run Imposition Engine
+        // -------------------------------------------------
 
         const result =
             await impositionPdf({
-                pdfBuffer: inputBuffer
+
+                pdfBuffer:
+                    inputBuffer,
+
+                config,
+
+                jobInfo:
+                    job.originalFileName ??
+                    jobId
             });
 
 
-        // -----------------------------------------
-        // 7. Create Output Filename
-        // -----------------------------------------
+        // -------------------------------------------------
+        // Validate Output
+        // -------------------------------------------------
 
-        const baseName =
-            job.originalFileName.replace(
-                /\.pdf$/i,
-                ""
+        if (
+            !result ||
+            !Buffer.isBuffer(
+                result.outputBuffer
+            )
+        ) {
+
+            throw new Error(
+                "Imposition engine did not return a valid PDF Buffer."
             );
+        }
 
 
-        const outputFileName =
-            `${baseName}-imposed.pdf`;
-
-
-        // -----------------------------------------
-        // 8. Upload Output to GridFS
-        // -----------------------------------------
-
-        console.log(
-            `[IMPOSITION CONTROLLER] Uploading imposed PDF: ${outputFileName}`
-        );
-
+        // -------------------------------------------------
+        // Upload Output to GridFS
+        // -------------------------------------------------
 
         const outputFile =
             await uploadFileToGridFS(
-                result.buffer,
-                outputFileName,
+
+                result.outputBuffer,
+
+                `imposed_${job.originalFileName}`,
+
                 "application/pdf"
             );
 
 
-        // -----------------------------------------
-        // 9. Save Production Configuration
-        // -----------------------------------------
+        // -------------------------------------------------
+        // Validate GridFS Response
+        // -------------------------------------------------
+
+        if (
+            !outputFile ||
+            !outputFile.fileId
+        ) {
+
+            throw new Error(
+                "GridFS upload completed but no output fileId was returned."
+            );
+        }
+
+
+        // -------------------------------------------------
+        // Save Production Config
+        // -------------------------------------------------
 
         job.productionConfig = {
+
             ...(job.productionConfig || {}),
 
-            imposition: {
-                enabled: true,
-
-                pageCount:
-                    result.pageCount,
-
-                sheet:
-                    result.sheet,
-
-                placements:
-                    result.placements,
-
-                outputFileId:
-                    outputFile.fileId,
-
-                outputFileName:
-                    outputFile.filename
-            }
+            imposition:
+                result.config
         };
 
 
-        // -----------------------------------------
-        // 10. Save Output File ID
-        // -----------------------------------------
+        // -------------------------------------------------
+        // Save Output File ID
+        // -------------------------------------------------
 
         job.outputFileId =
             outputFile.fileId;
 
 
-        // -----------------------------------------
-        // 11. Complete Job
-        // -----------------------------------------
+        // -------------------------------------------------
+        // Complete Job
+        // -------------------------------------------------
 
-        job.status = "COMPLETED";
+        job.status =
+            "COMPLETED";
+
+        job.errorMessage =
+            undefined;
 
         await job.save();
 
 
-        // -----------------------------------------
-        // 12. Response
-        // -----------------------------------------
+        // -------------------------------------------------
+        // Response
+        // -------------------------------------------------
 
         return res.status(200).json({
 
@@ -202,57 +242,51 @@ const imposePdf = async (req, res) => {
             message:
                 "PDF imposed successfully.",
 
-            job: {
+            jobId,
 
-                jobId:
-                    job._id,
+            outputFileId:
+                job.outputFileId,
 
-                originalFileName:
-                    job.originalFileName,
+            status:
+                job.status,
 
-                status:
-                    job.status,
+            source:
+                result.source,
 
-                sourceFileId:
-                    job.fileId,
+            orientation:
+                result.orientation,
 
-                outputFileId:
-                    outputFile.fileId,
+            geometry:
+                result.geometry,
 
-                imposition: {
+            signature:
+                result.signature,
 
-                    pageCount:
-                        result.pageCount,
+            repetition:
+                result.repetition,
 
-                    sheet:
-                        result.sheet,
-
-                    placements:
-                        result.placements,
-
-                    outputFileName:
-                        outputFile.filename
-                }
-            }
-
+            sheets:
+                result.sheets
         });
 
     } catch (error) {
 
         console.error(
-            "[IMPOSITION CONTROLLER ERROR]",
+            "Imposition Error:",
             error
         );
 
 
-        // -----------------------------------------
-        // Update Failed Status
-        // -----------------------------------------
+        // -------------------------------------------------
+        // Update FAILED status
+        // -------------------------------------------------
 
         try {
 
-            const { jobId } =
-                req.params;
+            const {
+                jobId
+            } = req.params;
+
 
             if (
                 mongoose.Types.ObjectId.isValid(
@@ -261,25 +295,33 @@ const imposePdf = async (req, res) => {
             ) {
 
                 await ProductionJob.findByIdAndUpdate(
+
                     jobId,
+
                     {
-                        status: "FAILED",
+                        status:
+                            "FAILED",
+
                         errorMessage:
                             error.message
                     }
                 );
-
             }
 
-        } catch (statusError) {
+        } catch (
+            updateError
+        ) {
 
             console.error(
-                "[IMPOSITION STATUS ERROR]",
-                statusError
+                "Failed to update job status:",
+                updateError
             );
-
         }
 
+
+        // -------------------------------------------------
+        // Error Response
+        // -------------------------------------------------
 
         return res.status(500).json({
 
@@ -290,11 +332,8 @@ const imposePdf = async (req, res) => {
 
             error:
                 error.message
-
         });
-
     }
-
 };
 
 

@@ -5,25 +5,9 @@ import {
 } from "./signature.utils.js";
 
 
-/*
- * ----------------------------------------------------
- * IMPORTANT
- * ----------------------------------------------------
- *
- * This engine separates:
- *
- * 1. Physical position
- * 2. Source page number
- * 3. Rotation
- * 4. Binding type
- *
- * The exact production sequence for each binding
- * will be configured here rather than hard-coded
- * inside the PDF drawing engine.
- *
- * ----------------------------------------------------
- */
-
+// =====================================================
+// SEQUENTIAL SIGNATURE
+// =====================================================
 
 const createSequentialSignature = ({
     pagesPerLayout
@@ -34,48 +18,75 @@ const createSequentialSignature = ({
     );
 
 
-    return Array.from(
-        {
-            length: pagesPerLayout
-        },
-        (_, index) => ({
+    const positions = [];
 
-            position:
-                index + 1,
+
+    for (
+        let position = 1;
+        position <= pagesPerLayout;
+        position++
+    ) {
+
+        positions.push({
+
+            position,
 
             sourcePage:
-                index + 1,
+                position,
 
-            rotation:
-                0
+            rotation: 0
+        });
+    }
 
-        })
-    );
+
+    return {
+        pagesPerLayout,
+        positions
+    };
 };
 
+
+// =====================================================
+// PERFECT BINDING
+// =====================================================
+//
+// IMPORTANT:
+// This is the initial production implementation.
+//
+// Exact Preps page sequencing will be refined once
+// we compare your actual Preps reference files.
+//
 
 const createPerfectBindingSignature = ({
     pagesPerLayout
 }) => {
-
-    validatePagesPerLayout(
-        pagesPerLayout
-    );
-
-
-    /*
-     * Temporary base sequence.
-     *
-     * We will replace this with the exact
-     * production sequence from your team's
-     * Prinergy/Preps references.
-     */
 
     return createSequentialSignature({
         pagesPerLayout
     });
 };
 
+
+// =====================================================
+// SADDLE STITCH / CENTER PIN
+// =====================================================
+//
+// Standard booklet-style signature ordering.
+//
+// Example 8 pages:
+//
+// Position 1 -> 8
+// Position 2 -> 1
+// Position 3 -> 2
+// Position 4 -> 7
+// Position 5 -> 6
+// Position 6 -> 3
+// Position 7 -> 4
+// Position 8 -> 5
+//
+// This remains a provisional signature until verified
+// against your actual Preps output.
+//
 
 const createSaddleStitchSignature = ({
     pagesPerLayout
@@ -86,104 +97,151 @@ const createSaddleStitchSignature = ({
     );
 
 
-    if (pagesPerLayout < 4) {
+    if (
+        pagesPerLayout % 4 !== 0
+    ) {
 
-        throw new Error(
-            "Saddle stitch requires at least 4 pages."
-        );
+        /*
+         * 2-page saddle/center-pin is not a
+         * conventional booklet signature.
+         *
+         * Keep sequential behavior for it.
+         */
 
+        return createSequentialSignature({
+            pagesPerLayout
+        });
     }
 
 
-    const signature = [];
+    const positions = [];
 
 
-    let left =
-        pagesPerLayout;
-
-    let right =
-        1;
+    let low = 1;
+    let high = pagesPerLayout;
 
 
     while (
-        left > right
+        low < high
     ) {
 
-        signature.push({
+        /*
+         * Outside pair
+         */
+
+        positions.push({
 
             position:
-                signature.length + 1,
+                positions.length + 1,
 
             sourcePage:
-                left,
+                high,
 
-            rotation:
-                180
-
+            rotation: 180
         });
 
 
-        signature.push({
+        positions.push({
 
             position:
-                signature.length + 1,
+                positions.length + 1,
 
             sourcePage:
-                right,
+                low,
 
-            rotation:
-                180
-
+            rotation: 180
         });
 
 
-        left--;
-        right++;
+        high--;
+        low++;
 
 
-        if (
-            left >= right
-        ) {
+        /*
+         * Inside pair
+         */
 
-            signature.push({
+        positions.push({
 
-                position:
-                    signature.length + 1,
+            position:
+                positions.length + 1,
 
-                sourcePage:
-                    right,
+            sourcePage:
+                low,
 
-                rotation:
-                    0
-
-            });
+            rotation: 0
+        });
 
 
-            signature.push({
+        positions.push({
 
-                position:
-                    signature.length + 1,
+            position:
+                positions.length + 1,
 
-                sourcePage:
-                    left,
+            sourcePage:
+                high,
 
-                rotation:
-                    0
-
-            });
+            rotation: 0
+        });
 
 
-            left--;
-            right++;
-
-        }
-
+        low++;
+        high--;
     }
 
 
-    return signature;
+    return {
+        pagesPerLayout,
+        positions
+    };
 };
 
+
+// =====================================================
+// CASE BINDING
+// =====================================================
+
+const createCaseBindingSignature = ({
+    pagesPerLayout
+}) => {
+
+    return createSequentialSignature({
+        pagesPerLayout
+    });
+};
+
+
+// =====================================================
+// WIRE-O
+// =====================================================
+
+const createWireOSignature = ({
+    pagesPerLayout
+}) => {
+
+    return createSequentialSignature({
+        pagesPerLayout
+    });
+};
+
+
+// =====================================================
+// FLAT / LOOSE
+// =====================================================
+
+const createFlatSignature = ({
+    pagesPerLayout
+}) => {
+
+    return createSequentialSignature({
+        pagesPerLayout
+    });
+};
+
+
+// =====================================================
+// MAIN SIGNATURE FACTORY
+// =====================================================
 
 const createSignature = ({
     pagesPerLayout,
@@ -196,7 +254,7 @@ const createSignature = ({
     );
 
 
-    const binding =
+    const normalizedBinding =
         normalizeBindingType(
             bindingType
         );
@@ -208,14 +266,16 @@ const createSignature = ({
         );
 
 
-    let pageAssignments;
+    let signature;
 
 
-    switch (binding) {
+    switch (
+        normalizedBinding
+    ) {
 
         case "PERFECT_BINDING":
 
-            pageAssignments =
+            signature =
                 createPerfectBindingSignature({
                     pagesPerLayout
                 });
@@ -225,9 +285,17 @@ const createSignature = ({
 
         case "SADDLE_STITCH":
 
+            signature =
+                createSaddleStitchSignature({
+                    pagesPerLayout
+                });
+
+            break;
+
+
         case "CENTER_PIN":
 
-            pageAssignments =
+            signature =
                 createSaddleStitchSignature({
                     pagesPerLayout
                 });
@@ -237,12 +305,28 @@ const createSignature = ({
 
         case "CASE_BINDING":
 
+            signature =
+                createCaseBindingSignature({
+                    pagesPerLayout
+                });
+
+            break;
+
+
         case "WIRE_O":
+
+            signature =
+                createWireOSignature({
+                    pagesPerLayout
+                });
+
+            break;
+
 
         case "FLAT":
 
-            pageAssignments =
-                createSequentialSignature({
+            signature =
+                createFlatSignature({
                     pagesPerLayout
                 });
 
@@ -252,31 +336,30 @@ const createSignature = ({
         default:
 
             throw new Error(
-                `Unsupported binding type: ${binding}`
+                `Unsupported binding type: ${normalizedBinding}`
             );
-
     }
 
 
     return {
 
-        pagesPerLayout,
+        ...signature,
 
         bindingType:
-            binding,
+            normalizedBinding,
 
         orientation:
-            normalizedOrientation,
-
-        pageAssignments
-
+            normalizedOrientation
     };
-
 };
 
 
 export {
-    createSignature,
+    createSequentialSignature,
     createPerfectBindingSignature,
-    createSaddleStitchSignature
+    createSaddleStitchSignature,
+    createCaseBindingSignature,
+    createWireOSignature,
+    createFlatSignature,
+    createSignature
 };
