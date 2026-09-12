@@ -21,6 +21,8 @@ const imposePdf = async (
     res
 ) => {
 
+    let job = null;
+
     try {
 
         const {
@@ -52,7 +54,7 @@ const imposePdf = async (
         // Find Job
         // -------------------------------------------------
 
-        const job =
+        job =
             await ProductionJob.findById(
                 jobId
             );
@@ -100,7 +102,7 @@ const imposePdf = async (
 
 
         // -------------------------------------------------
-        // Download Source PDF
+        // Download Source PDF From GridFS
         // -------------------------------------------------
 
         const inputBuffer =
@@ -110,13 +112,22 @@ const imposePdf = async (
 
 
         if (
-            !Buffer.isBuffer(
-                inputBuffer
-            )
+            !inputBuffer ||
+            !Buffer.isBuffer(inputBuffer)
         ) {
 
             throw new Error(
-                "Downloaded source PDF is not a Buffer."
+                "Downloaded source PDF is not a valid Buffer."
+            );
+        }
+
+
+        if (
+            inputBuffer.length === 0
+        ) {
+
+            throw new Error(
+                "Downloaded source PDF is empty."
             );
         }
 
@@ -125,11 +136,53 @@ const imposePdf = async (
         // Configuration
         // -------------------------------------------------
 
-        const config =
+        /*
+            Configuration can come from:
+
+            1. req.body
+            2. Existing job.productionConfig
+
+            Request body takes priority.
+        */
+
+        const requestConfig =
             req.body &&
             typeof req.body === "object"
                 ? req.body
                 : {};
+
+
+        const savedConfig =
+            job.productionConfig &&
+            typeof job.productionConfig === "object"
+                ? job.productionConfig
+                : {};
+
+
+        const config = {
+
+            ...savedConfig,
+
+            ...requestConfig
+        };
+
+
+        /*
+            If productionConfig contains an old nested
+            imposition object, preserve it as well.
+        */
+
+        if (
+            savedConfig.imposition &&
+            typeof savedConfig.imposition === "object" &&
+            requestConfig.imposition === undefined
+        ) {
+
+            config.imposition = {
+
+                ...savedConfig.imposition
+            };
+        }
 
 
         // -------------------------------------------------
@@ -139,25 +192,48 @@ const imposePdf = async (
         const result =
             await impositionPdf({
 
-                pdfBuffer:
+                /*
+                    IMPORTANT:
+
+                    Updated engine expects
+                    sourcePdfBytes, NOT pdfBuffer.
+                */
+
+                sourcePdfBytes:
                     inputBuffer,
 
                 config,
 
-                jobInfo:
-                    job.originalFileName ??
-                    jobId
+                jobInfo: {
+
+                    jobId:
+                        jobId,
+
+                    originalFileName:
+                        job.originalFileName ??
+                        "source.pdf"
+                }
             });
 
 
         // -------------------------------------------------
-        // Validate Output
+        // Validate Engine Output
         // -------------------------------------------------
 
         if (
-            !result ||
+            !result
+        ) {
+
+            throw new Error(
+                "Imposition engine returned no result."
+            );
+        }
+
+
+        if (
+            !result.pdfBytes ||
             !Buffer.isBuffer(
-                result.outputBuffer
+                result.pdfBytes
             )
         ) {
 
@@ -167,16 +243,35 @@ const imposePdf = async (
         }
 
 
+        if (
+            result.pdfBytes.length === 0
+        ) {
+
+            throw new Error(
+                "Imposition engine returned an empty PDF."
+            );
+        }
+
+
         // -------------------------------------------------
-        // Upload Output to GridFS
+        // Upload Output PDF To GridFS
         // -------------------------------------------------
+
+        const originalFileName =
+            job.originalFileName ??
+            "source.pdf";
+
+
+        const outputFileName =
+            `imposed_${originalFileName}`;
+
 
         const outputFile =
             await uploadFileToGridFS(
 
-                result.outputBuffer,
+                result.pdfBytes,
 
-                `imposed_${job.originalFileName}`,
+                outputFileName,
 
                 "application/pdf"
             );
@@ -198,7 +293,7 @@ const imposePdf = async (
 
 
         // -------------------------------------------------
-        // Save Production Config
+        // Save Production Configuration
         // -------------------------------------------------
 
         job.productionConfig = {
@@ -206,7 +301,7 @@ const imposePdf = async (
             ...(job.productionConfig || {}),
 
             imposition:
-                result.config
+                config
         };
 
 
@@ -253,20 +348,20 @@ const imposePdf = async (
             source:
                 result.source,
 
-            orientation:
-                result.orientation,
+            sheet:
+                result.sheet,
 
             geometry:
                 result.geometry,
 
-            signature:
-                result.signature,
+            pattern:
+                result.pattern,
 
-            repetition:
-                result.repetition,
+            workStyle:
+                result.workStyle,
 
-            sheets:
-                result.sheets
+            sides:
+                result.sides
         });
 
     } catch (error) {
@@ -278,34 +373,52 @@ const imposePdf = async (
 
 
         // -------------------------------------------------
-        // Update FAILED status
+        // Update FAILED Status
         // -------------------------------------------------
 
         try {
 
-            const {
-                jobId
-            } = req.params;
-
-
             if (
-                mongoose.Types.ObjectId.isValid(
-                    jobId
-                )
+                job &&
+                job._id
             ) {
 
-                await ProductionJob.findByIdAndUpdate(
+                job.status =
+                    "FAILED";
 
-                    jobId,
+                job.errorMessage =
+                    error?.message ??
+                    "Unknown imposition error.";
 
-                    {
-                        status:
-                            "FAILED",
+                await job.save();
 
-                        errorMessage:
-                            error.message
-                    }
-                );
+            } else {
+
+                const {
+                    jobId
+                } = req.params;
+
+
+                if (
+                    mongoose.Types.ObjectId.isValid(
+                        jobId
+                    )
+                ) {
+
+                    await ProductionJob.findByIdAndUpdate(
+
+                        jobId,
+
+                        {
+                            status:
+                                "FAILED",
+
+                            errorMessage:
+                                error?.message ??
+                                "Unknown imposition error."
+                        }
+                    );
+                }
             }
 
         } catch (
@@ -331,11 +444,16 @@ const imposePdf = async (
                 "Failed to impose PDF.",
 
             error:
-                error.message
+                error?.message ??
+                "Unknown imposition error."
         });
     }
 };
 
+
+// =====================================================
+// EXPORT
+// =====================================================
 
 export {
     imposePdf

@@ -1,7 +1,4 @@
-import {
-    PDFDocument
-} from "pdf-lib";
-
+import { PDFDocument } from "pdf-lib";
 
 import {
     createPlacement,
@@ -10,207 +7,382 @@ import {
     toPoints
 } from "./imposition.utils.js";
 
-
 import {
     validateImpositionPlan
 } from "./imposition.validator.js";
-
 
 import {
     normalizeImpositionConfig
 } from "./imposition.config.js";
 
-
 import {
-    resolveFoldPattern,
-    buildSidePlacements
+    resolveFoldPattern
 } from "./fold/fold.engine.js";
-
 
 import {
     drawPlacedPage,
     applyWorkStyle
 } from "./transform/page.transform.js";
 
-
 import {
     drawProductionMarks
 } from "../marks/marks.engine.js";
 
 
-// ============================================================
-// SOURCE PDF DIMENSIONS
-// ============================================================
+// =====================================================
+// CONSTANTS
+// =====================================================
 
-const getSourcePageDimensions = (
-    sourcePdf
+const EPSILON = 0.01;
+
+
+// =====================================================
+// NUMBER HELPERS
+// =====================================================
+
+const isFiniteNumber = (value) =>
+    Number.isFinite(Number(value));
+
+
+const safeNumber = (
+    value,
+    fallback = 0
 ) => {
 
-    if (
-        sourcePdf.getPageCount() === 0
-    ) {
+    const number =
+        Number(value);
 
-        throw new Error(
-            "Source PDF contains no pages."
-        );
-    }
-
-
-    const firstPage =
-        sourcePdf.getPage(0);
+    return Number.isFinite(number)
+        ? number
+        : fallback;
+};
 
 
-    const size =
-        firstPage.getSize();
+// =====================================================
+// SOURCE PAGE DIMENSIONS
+// =====================================================
 
+const getSourcePageDimensions = (
+    page
+) => {
+
+    const width =
+        page.getWidth();
+
+    const height =
+        page.getHeight();
+
+    const rotation =
+        page.getRotation?.()?.angle ??
+        0;
 
     return {
 
-        width:
-            size.width,
+        width,
 
-        height:
-            size.height,
+        height,
 
-        rotation:
-            firstPage
-                .getRotation()
-                ?.angle || 0
+        rotation
     };
 };
 
 
-// ============================================================
-// MARGINS
-// ============================================================
+// =====================================================
+// MARGIN
+// =====================================================
 
-const getMargin = (
+const getMargin = ({
+    margin,
+    margins
+}) => {
+
+    const source =
+        margins ??
+        margin ??
+        {};
+
+    return {
+
+        top:
+            safeNumber(
+                source.top
+            ),
+
+        right:
+            safeNumber(
+                source.right
+            ),
+
+        bottom:
+            safeNumber(
+                source.bottom
+            ),
+
+        left:
+            safeNumber(
+                source.left
+            ),
+
+        unit:
+            source.unit ??
+            "mm"
+    };
+};
+
+
+// =====================================================
+// GUTTER
+// =====================================================
+
+const getGutter = ({
+    gutter
+}) => {
+
+    const source =
+        gutter ??
+        {};
+
+    return {
+
+        horizontal:
+            safeNumber(
+                source.horizontal
+            ),
+
+        vertical:
+            safeNumber(
+                source.vertical
+            ),
+
+        unit:
+            source.unit ??
+            "mm"
+    };
+};
+
+
+// =====================================================
+// BLEED
+// =====================================================
+
+const getBleed = ({
+    bleed
+}) => {
+
+    const source =
+        bleed ??
+        {};
+
+    return {
+
+        top:
+            safeNumber(
+                source.top
+            ),
+
+        right:
+            safeNumber(
+                source.right
+            ),
+
+        bottom:
+            safeNumber(
+                source.bottom
+            ),
+
+        left:
+            safeNumber(
+                source.left
+            ),
+
+        unit:
+            source.unit ??
+            "mm"
+    };
+};
+
+
+// =====================================================
+// CROP MARK CLEARANCE
+// =====================================================
+
+/*
+    IMPORTANT:
+
+    Bleed is NOT added to the PDF page dimensions.
+
+    Bleed and crop marks are treated as production
+    clearance around the complete imposed layout.
+
+    Clearance:
+
+        max(
+            bleed,
+            crop offset + crop mark length
+        )
+*/
+
+const getCropMarkClearance = ({
     config
-) => {
+}) => {
 
-    const margin =
-        config.margin ??
-        config.margins ??
-        {
-            top: 0,
-            right: 0,
-            bottom: 0,
-            left: 0,
-            unit: "mm"
-        };
+    const bleed =
+        getBleed({
+            bleed:
+                config.bleed
+        });
 
 
-    const unit =
-        margin.unit || "mm";
+    const cropMarks =
+        config.cropMarks ??
+        {};
+
+
+    const cropEnabled =
+        cropMarks.enabled !== false;
+
+
+    const cropLength =
+        cropEnabled
+            ? safeNumber(
+                cropMarks.length
+            )
+            : 0;
+
+
+    const cropOffset =
+        cropEnabled
+            ? safeNumber(
+                cropMarks.offset
+            )
+            : 0;
+
+
+    const cropUnit =
+        cropMarks.unit ??
+        bleed.unit ??
+        "mm";
+
+
+    const bleedUnit =
+        bleed.unit ??
+        "mm";
+
+
+    const cropReach =
+        cropEnabled
+            ? toPoints(
+                cropLength +
+                cropOffset,
+
+                cropUnit
+            )
+            : 0;
 
 
     return {
 
         top:
-            toPoints(
-                Number(
-                    margin.top || 0
+            Math.max(
+
+                toPoints(
+                    bleed.top,
+                    bleedUnit
                 ),
-                unit
+
+                cropReach
             ),
 
         right:
-            toPoints(
-                Number(
-                    margin.right || 0
+            Math.max(
+
+                toPoints(
+                    bleed.right,
+                    bleedUnit
                 ),
-                unit
+
+                cropReach
             ),
 
         bottom:
-            toPoints(
-                Number(
-                    margin.bottom || 0
+            Math.max(
+
+                toPoints(
+                    bleed.bottom,
+                    bleedUnit
                 ),
-                unit
+
+                cropReach
             ),
 
         left:
-            toPoints(
-                Number(
-                    margin.left || 0
+            Math.max(
+
+                toPoints(
+                    bleed.left,
+                    bleedUnit
                 ),
-                unit
+
+                cropReach
             )
     };
 };
 
 
-// ============================================================
-// GUTTER
-// ============================================================
-
-const getGutter = (
-    config
-) => {
-
-    const gutter =
-        config.gutter ||
-        {
-            horizontal: 0,
-            vertical: 0,
-            unit: "mm"
-        };
-
-
-    const unit =
-        gutter.unit || "mm";
-
-
-    return {
-
-        horizontal:
-            toPoints(
-                Number(
-                    gutter.horizontal || 0
-                ),
-                unit
-            ),
-
-        vertical:
-            toPoints(
-                Number(
-                    gutter.vertical || 0
-                ),
-                unit
-            )
-    };
-};
-
-
-// ============================================================
+// =====================================================
 // USABLE SHEET AREA
-// ============================================================
+// =====================================================
 
 const createUsableArea = ({
     sheet,
-    margin
+    margin,
+    cropClearance
 }) => {
+
+    const left =
+        margin.left +
+        cropClearance.left;
+
+
+    const right =
+        margin.right +
+        cropClearance.right;
+
+
+    const top =
+        margin.top +
+        cropClearance.top;
+
+
+    const bottom =
+        margin.bottom +
+        cropClearance.bottom;
+
 
     const width =
         sheet.width -
-        margin.left -
-        margin.right;
+        left -
+        right;
 
 
     const height =
         sheet.height -
-        margin.top -
-        margin.bottom;
+        top -
+        bottom;
 
 
-    if (
-        width <= 0 ||
-        height <= 0
-    ) {
+    if (width <= 0) {
 
         throw new Error(
-            "Margins leave no usable area on the sheet."
+            "Sheet usable width is zero or negative after margins and crop clearance."
+        );
+    }
+
+
+    if (height <= 0) {
+
+        throw new Error(
+            "Sheet usable height is zero or negative after margins and crop clearance."
         );
     }
 
@@ -218,10 +390,10 @@ const createUsableArea = ({
     return {
 
         x:
-            margin.left,
+            left,
 
         y:
-            margin.bottom,
+            bottom,
 
         width,
 
@@ -230,66 +402,113 @@ const createUsableArea = ({
 };
 
 
-// ============================================================
-// CALCULATE COMPLETE LAYOUT
-// ============================================================
+// =====================================================
+// LAYOUT GEOMETRY
+// =====================================================
+
 /*
- * THIS IS THE CORE GEOMETRY.
- *
- * We DO NOT divide the sheet into cells.
- *
- * We first calculate the actual footprint of the pages.
- *
- * Example:
- *
- *   page = 846 × 612
- *
- *   2 columns:
- *
- *   846 + gutter + 846
- *
- *   2 rows:
- *
- *   612 + gutter + 612
- *
- *
- * Remaining sheet area becomes OUTER SHEET SPACE.
- *
- * No artificial space is inserted between pages.
- */
-// ============================================================
+    The geometry is calculated from:
+
+        actual source PDF size
+        +
+        selected fold pattern
+        +
+        sheet size
+        +
+        margin
+        +
+        gutter
+
+    No artificial internal gap is introduced.
+
+    If gutter = 0:
+
+        page 1 | page 2
+
+    directly touch each other.
+
+    Remaining sheet area becomes outer margin.
+*/
 
 const calculateLayoutGeometry = ({
-    pattern,
     sourceWidth,
     sourceHeight,
+    columns,
+    rows,
     usableArea,
     gutter,
     fitMode
 }) => {
 
-    const columns =
-        pattern.columns;
+    if (
+        !isFiniteNumber(
+            sourceWidth
+        ) ||
+        !isFiniteNumber(
+            sourceHeight
+        )
+    ) {
 
-
-    const rows =
-        pattern.rows;
+        throw new Error(
+            "Invalid source page dimensions."
+        );
+    }
 
 
     if (
+        sourceWidth <= 0 ||
+        sourceHeight <= 0
+    ) {
+
+        throw new Error(
+            "Source page dimensions must be greater than zero."
+        );
+    }
+
+
+    if (
+        !Number.isInteger(
+            columns
+        ) ||
+        !Number.isInteger(
+            rows
+        ) ||
         columns <= 0 ||
         rows <= 0
     ) {
 
         throw new Error(
-            `Invalid geometry for ${pattern.id}.`
+            "Invalid fold pattern grid."
         );
     }
 
 
-    // --------------------------------------------------------
-    // NATIVE FOOTPRINT
-    // --------------------------------------------------------
+    const gutterHorizontal =
+        safeNumber(
+            gutter.horizontal
+        );
+
+
+    const gutterVertical =
+        safeNumber(
+            gutter.vertical
+        );
+
+
+    if (
+        gutterHorizontal < 0 ||
+        gutterVertical < 0
+    ) {
+
+        throw new Error(
+            "Gutter cannot be negative."
+        );
+    }
+
+
+    // -------------------------------------------------
+    // Native layout size
+    // -------------------------------------------------
 
     const nativeWidth =
         (
@@ -297,11 +516,8 @@ const calculateLayoutGeometry = ({
             sourceWidth
         ) +
         (
-            Math.max(
-                columns - 1,
-                0
-            ) *
-            gutter.horizontal
+            (columns - 1) *
+            gutterHorizontal
         );
 
 
@@ -311,71 +527,51 @@ const calculateLayoutGeometry = ({
             sourceHeight
         ) +
         (
-            Math.max(
-                rows - 1,
-                0
-            ) *
-            gutter.vertical
+            (rows - 1) *
+            gutterVertical
         );
 
 
-    // --------------------------------------------------------
-    // SCALE
-    // --------------------------------------------------------
-    //
-    // SCALE_TO_FIT:
-    //
-    //   scale DOWN if required.
-    //
-    //   never enlarge.
-    //
-    // NONE:
-    //
-    //   native size.
-    // --------------------------------------------------------
+    // -------------------------------------------------
+    // Calculate scale
+    // -------------------------------------------------
 
     let scale = 1;
 
 
     if (
-        String(
-            fitMode
-        ).toUpperCase() !== "NONE"
+        fitMode ===
+        "SCALE_TO_FIT"
     ) {
 
-        const scaleX =
+        const widthScale =
             usableArea.width /
             nativeWidth;
 
 
-        const scaleY =
+        const heightScale =
             usableArea.height /
             nativeHeight;
 
 
+        /*
+            Do not enlarge the source artwork.
+
+            Maximum scale = 1.
+        */
+
         scale =
             Math.min(
                 1,
-                scaleX,
-                scaleY
+                widthScale,
+                heightScale
             );
     }
 
 
-    if (
-        !Number.isFinite(scale) ||
-        scale <= 0
-    ) {
-
-        throw new Error(
-            `Unable to fit ${pattern.id} on sheet.`
-        );
-    }
-
-
-    // --------------------------------------------------------
-    // ACTUAL PAGE SIZE
-    // --------------------------------------------------------
+    // -------------------------------------------------
+    // Final page dimensions
+    // -------------------------------------------------
 
     const pageWidth =
         sourceWidth *
@@ -387,19 +583,19 @@ const calculateLayoutGeometry = ({
         scale;
 
 
-    const horizontalGutter =
-        gutter.horizontal *
+    const scaledGutterHorizontal =
+        gutterHorizontal *
         scale;
 
 
-    const verticalGutter =
-        gutter.vertical *
+    const scaledGutterVertical =
+        gutterVertical *
         scale;
 
 
-    // --------------------------------------------------------
-    // COMPLETE LAYOUT SIZE
-    // --------------------------------------------------------
+    // -------------------------------------------------
+    // Final complete layout dimensions
+    // -------------------------------------------------
 
     const layoutWidth =
         (
@@ -407,11 +603,8 @@ const calculateLayoutGeometry = ({
             pageWidth
         ) +
         (
-            Math.max(
-                columns - 1,
-                0
-            ) *
-            horizontalGutter
+            (columns - 1) *
+            scaledGutterHorizontal
         );
 
 
@@ -421,120 +614,210 @@ const calculateLayoutGeometry = ({
             pageHeight
         ) +
         (
-            Math.max(
-                rows - 1,
-                0
-            ) *
-            verticalGutter
+            (rows - 1) *
+            scaledGutterVertical
         );
 
 
-    // --------------------------------------------------------
-    // CENTER COMPLETE LAYOUT
-    //
-    // IMPORTANT:
-    //
-    // This is OUTER sheet space.
-    //
-    // It is NOT inserted between pages.
-    // --------------------------------------------------------
+    // -------------------------------------------------
+    // Center complete layout
+    // -------------------------------------------------
 
-    const startX =
-        usableArea.x +
+    const offsetX =
         (
             usableArea.width -
             layoutWidth
         ) / 2;
 
 
-    const startY =
-        usableArea.y +
+    const offsetY =
         (
             usableArea.height -
             layoutHeight
         ) / 2;
 
 
+    const originX =
+        usableArea.x +
+        offsetX;
+
+
+    const originY =
+        usableArea.y +
+        offsetY;
+
+
     return {
 
         scale,
+
+        sourceWidth,
+
+        sourceHeight,
 
         pageWidth,
 
         pageHeight,
 
-        horizontalGutter,
+        gutterHorizontal:
+            scaledGutterHorizontal,
 
-        verticalGutter,
+        gutterVertical:
+            scaledGutterVertical,
+
+        columns,
+
+        rows,
 
         layoutWidth,
 
         layoutHeight,
 
-        startX,
+        originX,
 
-        startY
+        originY,
+
+        usableArea
     };
 };
 
 
-// ============================================================
+// =====================================================
 // BUILD PHYSICAL PLACEMENTS
-// ============================================================
+// =====================================================
 
 const buildPhysicalPlacements = ({
-    pattern,
-    side,
+    patternSide,
     geometry
 }) => {
 
-    const logicalPlacements =
-        buildSidePlacements({
-            pattern,
-            side
-        });
+    if (
+        !patternSide ||
+        !Array.isArray(
+            patternSide
+        )
+    ) {
+
+        return [];
+    }
 
 
-    return logicalPlacements.map(
-        placement => {
+    const placements = [];
 
-            const x =
-                geometry.startX +
+
+    for (
+        const item
+        of patternSide
+    ) {
+
+        const column =
+            Number(
+                item.column
+            );
+
+
+        const row =
+            Number(
+                item.row
+            );
+
+
+        const pageNumber =
+            Number(
+                item.pageNumber
+            );
+
+
+        const rotation =
+            Number(
+                item.rotation ??
+                0
+            );
+
+
+        if (
+            !Number.isInteger(
+                column
+            ) ||
+            !Number.isInteger(
+                row
+            )
+        ) {
+
+            throw new Error(
+                "Invalid fold-pattern position."
+            );
+        }
+
+
+        if (
+            column < 0 ||
+            column >= geometry.columns
+        ) {
+
+            throw new Error(
+                `Fold-pattern column ${column} is outside the grid.`
+            );
+        }
+
+
+        if (
+            row < 0 ||
+            row >= geometry.rows
+        ) {
+
+            throw new Error(
+                `Fold-pattern row ${row} is outside the grid.`
+            );
+        }
+
+
+        const x =
+            geometry.originX +
+            (
+                column *
                 (
-                    placement.column *
-                    (
-                        geometry.pageWidth +
-                        geometry.horizontalGutter
-                    )
-                );
+                    geometry.pageWidth +
+                    geometry.gutterHorizontal
+                )
+            );
 
 
-            /*
-             * row 0 = TOP
-             *
-             * PDF coordinate system:
-             * y = bottom
-             *
-             * Therefore reverse row order.
-             */
+        /*
+            Fold pattern row numbering:
 
-            const y =
-                geometry.startY +
+                0 = top row
+                1 = next row
+                etc.
+
+            PDF coordinate system:
+
+                bottom = 0
+
+            Therefore convert top-based row
+            to bottom-based PDF position.
+        */
+
+        const y =
+            geometry.originY +
+            (
                 (
-                    pattern.rows -
+                    geometry.rows -
                     1 -
-                    placement.row
+                    row
                 ) *
                 (
                     geometry.pageHeight +
-                    geometry.verticalGutter
-                );
+                    geometry.gutterVertical
+                )
+            );
 
 
-            return createPlacement({
+        placements.push(
 
-                pageNumber:
-                    placement.pageNumber,
+            createPlacement({
+
+                pageNumber,
 
                 x,
 
@@ -546,110 +829,232 @@ const buildPhysicalPlacements = ({
                 height:
                     geometry.pageHeight,
 
-                rotation:
-                    placement.rotation,
+                rotation,
 
                 unit:
                     "pt"
-            });
-        }
-    );
+            })
+        );
+    }
+
+
+    return placements;
 };
 
 
-// ============================================================
-// VALIDATE SOURCE PAGE REFERENCES
-// ============================================================
+// =====================================================
+// SOURCE PAGE REFERENCE VALIDATION
+// =====================================================
 
 const validateSourcePageReferences = ({
     placements,
-    sourcePageCount,
-    side
+    sourcePageCount
 }) => {
 
-    placements.forEach(
-        placement => {
+    const usedPages =
+        new Set();
 
-            if (
-                placement.pageNumber < 1 ||
-                placement.pageNumber >
-                    sourcePageCount
-            ) {
 
-                throw new Error(
-                    `${side}: pattern references source page ` +
-                    `${placement.pageNumber}, but source PDF has ` +
-                    `${sourcePageCount} pages.`
-                );
-            }
+    for (
+        const placement
+        of placements
+    ) {
+
+        const pageNumber =
+            Number(
+                placement.pageNumber
+            );
+
+
+        if (
+            !Number.isInteger(
+                pageNumber
+            ) ||
+            pageNumber < 1 ||
+            pageNumber > sourcePageCount
+        ) {
+
+            throw new Error(
+                `Invalid source page reference: ${pageNumber}.`
+            );
         }
-    );
+
+
+        if (
+            usedPages.has(
+                pageNumber
+            )
+        ) {
+
+            throw new Error(
+                `Source page ${pageNumber} is used more than once in the same side.`
+            );
+        }
+
+
+        usedPages.add(
+            pageNumber
+        );
+    }
 };
 
 
-// ============================================================
-// VALIDATE SHEET BOUNDARIES
-// ============================================================
+// =====================================================
+// SHEET BOUNDARY VALIDATION
+// =====================================================
 
-const validatePlacements = ({
+const validatePlacementsAgainstSheet = ({
     placements,
     sheet
 }) => {
 
-    const invalid =
-        placements.filter(
-            placement =>
-                !isPlacementInsideSheet(
-                    placement,
-                    sheet
-                )
-        );
-
-
-    if (
-        invalid.length > 0
+    for (
+        const placement
+        of placements
     ) {
 
-        throw new Error(
-            "Placement outside sheet boundary. " +
-            `Pages: ${
-                invalid
-                    .map(
-                        item =>
-                            item.pageNumber
-                    )
-                    .join(", ")
-            }`
-        );
+        if (
+            !isPlacementInsideSheet(
+                placement,
+                sheet,
+                EPSILON
+            )
+        ) {
+
+            throw new Error(
+                `Page ${placement.pageNumber} falls outside the output sheet.`
+            );
+        }
     }
 };
 
 
-// ============================================================
-// IMPOSE PDF
-// ============================================================
+// =====================================================
+// PATTERN GRID
+// =====================================================
 
-const impositionPdf = async ({
-    pdfBuffer,
-    config = {},
-    jobInfo = null
+const getPatternGrid = ({
+    pattern
 }) => {
 
-    if (
-        !Buffer.isBuffer(
-            pdfBuffer
-        )
-    ) {
+    if (!pattern) {
 
         throw new Error(
-            "PDF buffer is required."
+            "Fold pattern is required."
         );
     }
 
 
-    // ========================================================
-    // NORMALIZE CONFIG
-    // ========================================================
+    const columns =
+        Number(
+            pattern.columns ??
+            pattern.cols
+        );
+
+
+    const rows =
+        Number(
+            pattern.rows
+        );
+
+
+    if (
+        !Number.isInteger(
+            columns
+        ) ||
+        !Number.isInteger(
+            rows
+        ) ||
+        columns <= 0 ||
+        rows <= 0
+    ) {
+
+        throw new Error(
+            "Fold pattern must define valid columns and rows."
+        );
+    }
+
+
+    return {
+
+        columns,
+
+        rows
+    };
+};
+
+
+// =====================================================
+// BUILD SIDE
+// =====================================================
+
+const buildSide = ({
+    side,
+    geometry
+}) => {
+
+    return buildPhysicalPlacements({
+
+        patternSide:
+            side ?? [],
+
+        geometry
+    });
+};
+
+
+// =====================================================
+// IMPOSE PDF
+// =====================================================
+
+const impositionPdf = async ({
+    sourcePdfBytes,
+    config = {},
+    jobInfo = null,
+    font = null
+}) => {
+
+
+    // -------------------------------------------------
+    // Validate input
+    // -------------------------------------------------
+
+    if (
+        !sourcePdfBytes
+    ) {
+
+        throw new Error(
+            "sourcePdfBytes is required."
+        );
+    }
+
+
+    /*
+        Accept both Buffer and Uint8Array.
+
+        This makes the engine safer when called from
+        different Node.js services.
+    */
+
+    if (
+        !Buffer.isBuffer(
+            sourcePdfBytes
+        ) &&
+        !(
+            sourcePdfBytes instanceof
+            Uint8Array
+        )
+    ) {
+
+        throw new Error(
+            "sourcePdfBytes must be a Buffer or Uint8Array."
+        );
+    }
+
+
+    // -------------------------------------------------
+    // Normalize configuration
+    // -------------------------------------------------
 
     const normalizedConfig =
         normalizeImpositionConfig(
@@ -657,43 +1062,22 @@ const impositionPdf = async ({
         );
 
 
-    console.log(
-        "========== IMPOSITION DEBUG =========="
-    );
-
-
-    console.log(
-        "RAW CONFIG:",
-        JSON.stringify(
-            config,
-            null,
-            2
-        )
-    );
-
-
-    console.log(
-        "NORMALIZED CONFIG:",
-        JSON.stringify(
-            normalizedConfig,
-            null,
-            2
-        )
-    );
-
-
-    // ========================================================
-    // LOAD SOURCE
-    // ========================================================
+    // -------------------------------------------------
+    // Load source PDF
+    // -------------------------------------------------
 
     const sourcePdf =
         await PDFDocument.load(
-            pdfBuffer
+            sourcePdfBytes
         );
 
 
+    const sourcePages =
+        sourcePdf.getPages();
+
+
     const sourcePageCount =
-        sourcePdf.getPageCount();
+        sourcePages.length;
 
 
     if (
@@ -706,13 +1090,17 @@ const impositionPdf = async ({
     }
 
 
-    // ========================================================
-    // ACTUAL SOURCE PAGE SIZE
-    // ========================================================
+    // -------------------------------------------------
+    // Read source page dimensions
+    // -------------------------------------------------
+
+    const firstSourcePage =
+        sourcePages[0];
+
 
     const sourceDimensions =
         getSourcePageDimensions(
-            sourcePdf
+            firstSourcePage
         );
 
 
@@ -724,249 +1112,421 @@ const impositionPdf = async ({
         sourceDimensions.height;
 
 
-    console.log(
-        "[IMPOSITION] SOURCE:",
-        `${sourceWidth} × ${sourceHeight} pt`
-    );
+    /*
+        Current Phase 5 engine assumes all pages have
+        the same physical dimensions.
+    */
+
+    for (
+        let index = 1;
+        index < sourcePages.length;
+        index++
+    ) {
+
+        const dimensions =
+            getSourcePageDimensions(
+                sourcePages[index]
+            );
 
 
-    // ========================================================
-    // SHEET
-    // ========================================================
+        if (
+            Math.abs(
+                dimensions.width -
+                sourceWidth
+            ) > EPSILON ||
+            Math.abs(
+                dimensions.height -
+                sourceHeight
+            ) > EPSILON
+        ) {
+
+            throw new Error(
+
+                `Source PDF page ${index + 1} has a different page size. ` +
+                `All pages must currently have the same physical dimensions.`
+            );
+        }
+    }
+
+
+    // -------------------------------------------------
+    // Sheet
+    // -------------------------------------------------
+
+    const sheetConfig =
+        normalizedConfig.sheet;
+
+
+    if (
+        !sheetConfig
+    ) {
+
+        throw new Error(
+            "Sheet configuration is required."
+        );
+    }
+
 
     const sheet =
         createSheet({
 
             width:
-                normalizedConfig
-                    .sheet
-                    .width,
+                sheetConfig.width,
 
             height:
-                normalizedConfig
-                    .sheet
-                    .height,
+                sheetConfig.height,
 
             unit:
-                normalizedConfig
-                    .sheet
-                    .unit
+                sheetConfig.unit
         });
 
 
-    console.log(
-        "[IMPOSITION] SHEET:",
-        `${sheet.width} × ${sheet.height} pt`
-    );
-
-
-    // ========================================================
-    // MARGIN
-    // ========================================================
+    // -------------------------------------------------
+    // Margins
+    // -------------------------------------------------
 
     const margin =
-        getMargin(
-            normalizedConfig
-        );
+        getMargin({
+
+            margin:
+                normalizedConfig.margin,
+
+            margins:
+                normalizedConfig.margins
+        });
 
 
-    // ========================================================
-    // GUTTER
-    // ========================================================
+    const marginPoints = {
 
-    const gutter =
-        getGutter(
-            normalizedConfig
-        );
+        top:
+            toPoints(
+                margin.top,
+                margin.unit
+            ),
+
+        right:
+            toPoints(
+                margin.right,
+                margin.unit
+            ),
+
+        bottom:
+            toPoints(
+                margin.bottom,
+                margin.unit
+            ),
+
+        left:
+            toPoints(
+                margin.left,
+                margin.unit
+            )
+    };
 
 
-    // ========================================================
-    // USABLE AREA
-    // ========================================================
+    // -------------------------------------------------
+    // Gutter
+    // -------------------------------------------------
+
+    const gutterConfig =
+        getGutter({
+
+            gutter:
+                normalizedConfig.gutter
+        });
+
+
+    const gutter = {
+
+        horizontal:
+            toPoints(
+                gutterConfig.horizontal,
+                gutterConfig.unit
+            ),
+
+        vertical:
+            toPoints(
+                gutterConfig.vertical,
+                gutterConfig.unit
+            )
+    };
+
+
+    // -------------------------------------------------
+    // Crop / bleed clearance
+    // -------------------------------------------------
+
+    const cropClearance =
+        getCropMarkClearance({
+
+            config:
+                normalizedConfig
+        });
+
+
+    // -------------------------------------------------
+    // Usable sheet area
+    // -------------------------------------------------
 
     const usableArea =
         createUsableArea({
 
             sheet,
 
-            margin
+            margin:
+                marginPoints,
+
+            cropClearance
         });
 
 
-    // ========================================================
-    // FOLD PATTERN
-    // ========================================================
+    // -------------------------------------------------
+    // Layout configuration
+    // -------------------------------------------------
+
+    const layoutConfig =
+        normalizedConfig.layout ??
+        {};
+
 
     const pagesPerLayout =
         Number(
-            normalizedConfig
-                .layout
-                .pagesPerLayout
+
+            layoutConfig.pagesPerLayout ??
+            layoutConfig.pageCount ??
+            sourcePageCount
         );
 
 
+    if (
+        !Number.isInteger(
+            pagesPerLayout
+        )
+    ) {
+
+        throw new Error(
+            "pagesPerLayout must be an integer."
+        );
+    }
+
+
+    if (
+        pagesPerLayout >
+        sourcePageCount
+    ) {
+
+        throw new Error(
+
+            `pagesPerLayout (${pagesPerLayout}) ` +
+            `cannot exceed source PDF page count ` +
+            `(${sourcePageCount}).`
+        );
+    }
+
+
+    // -------------------------------------------------
+    // Pattern ID
+    // -------------------------------------------------
+
     const patternId =
-        normalizedConfig
-            .layout
-            ?.patternId ||
-        normalizedConfig
-            .layout
-            ?.foldPattern ||
+        layoutConfig.patternId ??
+        layoutConfig.foldPattern ??
         null;
 
+
+    // -------------------------------------------------
+    // Resolve fold pattern
+    // -------------------------------------------------
 
     const pattern =
         resolveFoldPattern({
 
             pagesPerLayout,
 
-            patternId
+            patternId,
+
+            layout:
+                layoutConfig,
+
+            binding:
+                normalizedConfig.binding
         });
 
 
-    console.log(
-        "[IMPOSITION] PATTERN:",
-        pattern.id
-    );
+    if (
+        !pattern
+    ) {
+
+        throw new Error(
+
+            `No fold pattern is available for ${pagesPerLayout}PP.`
+        );
+    }
 
 
-    // ========================================================
-    // FIT MODE
-    // ========================================================
+    // -------------------------------------------------
+    // Pattern grid
+    // -------------------------------------------------
 
-    const fitMode =
-        normalizedConfig
-            .fit
-            ?.mode ||
-        "SCALE_TO_FIT";
+    const {
+        columns,
+        rows
+    } =
+        getPatternGrid({
+
+            pattern
+        });
 
 
-    // ========================================================
-    // GEOMETRY
-    // ========================================================
-    //
-    // This is where actual PDF dimensions are used.
-    //
-    // NO sheet-cell division.
-    // ========================================================
+    // -------------------------------------------------
+    // Geometry
+    // -------------------------------------------------
 
     const geometry =
         calculateLayoutGeometry({
-
-            pattern,
 
             sourceWidth,
 
             sourceHeight,
 
+            columns,
+
+            rows,
+
             usableArea,
 
             gutter,
 
-            fitMode
+            fitMode:
+                normalizedConfig.fit?.mode ??
+                normalizedConfig.fitMode ??
+                "SCALE_TO_FIT"
         });
 
 
-    console.log(
-        "[IMPOSITION] GEOMETRY:",
-        JSON.stringify(
-            geometry,
-            null,
-            2
-        )
-    );
+    // -------------------------------------------------
+    // Front placements
+    // -------------------------------------------------
+
+    const frontPattern =
+        pattern.front ??
+        [];
 
 
-    // ========================================================
-    // FRONT
-    // ========================================================
-
-    let frontPlacements =
-        buildPhysicalPlacements({
-
-            pattern,
+    const frontPlacements =
+        buildSide({
 
             side:
-                "front",
+                frontPattern,
 
             geometry
         });
 
 
-    // ========================================================
-    // BACK
-    // ========================================================
+    // -------------------------------------------------
+    // Back placements
+    // -------------------------------------------------
 
-    let backPlacements =
-        buildPhysicalPlacements({
+    const backPattern =
+        pattern.back ??
+        [];
 
-            pattern,
+
+    const backPlacements =
+        buildSide({
 
             side:
-                "back",
+                backPattern,
 
             geometry
         });
 
 
-    // ========================================================
-    // WORK STYLE
-    // ========================================================
+    // -------------------------------------------------
+    // Validate page references
+    // -------------------------------------------------
 
-    const workStyle =
-        normalizedConfig
-            .workStyle
-            ?.type ||
+    validateSourcePageReferences({
+
+        placements:
+            frontPlacements,
+
+        sourcePageCount
+    });
+
+
+    validateSourcePageReferences({
+
+        placements:
+            backPlacements,
+
+        sourcePageCount
+    });
+
+
+    // -------------------------------------------------
+    // Work Style
+    // -------------------------------------------------
+
+    const workStyleType =
+        normalizedConfig.workStyle?.type ??
+        normalizedConfig.workStyle ??
         "SHEETWISE";
 
 
+    let finalFrontPlacements =
+        frontPlacements;
+
+
+    let finalBackPlacements =
+        backPlacements;
+
+
     /*
-     * Only transform BACK when a BACK actually exists.
-     */
+        Binding and work style are intentionally separate.
+
+        Binding:
+            Perfect Binding
+            Center Pin
+            Case Binding
+            Wire-O
+            Flat
+
+        Work style:
+            Sheetwise
+            Work & Turn
+            Work & Tumble
+            Perfector
+            Single-sided
+    */
 
     if (
-        backPlacements.length > 0
+        finalBackPlacements.length > 0
     ) {
 
-        backPlacements =
+        finalBackPlacements =
             applyWorkStyle({
 
                 placements:
-                    backPlacements,
+                    finalBackPlacements,
 
-                sheet,
+                workStyle:
+                    workStyleType,
 
-                workStyle
+                sheet
             });
     }
 
 
-    // ========================================================
-    // SINGLE SIDED
-    // ========================================================
-
-    const isSingleSided =
-        String(
-            workStyle
-        ).toUpperCase() ===
-        "SINGLE_SIDED";
-
-
-    // ========================================================
-    // SIDES
-    // ========================================================
-    //
-    // VERY IMPORTANT:
-    //
-    // If fold pattern has no BACK, do NOT generate a blank
-    // second PDF page.
-    // ========================================================
+    // -------------------------------------------------
+    // Sides
+    // -------------------------------------------------
 
     const sides = [];
 
 
     if (
-        frontPlacements.length > 0
+        finalFrontPlacements.length > 0
     ) {
 
         sides.push({
@@ -975,14 +1535,13 @@ const impositionPdf = async ({
                 "FRONT",
 
             placements:
-                frontPlacements
+                finalFrontPlacements
         });
     }
 
 
     if (
-        !isSingleSided &&
-        backPlacements.length > 0
+        finalBackPlacements.length > 0
     ) {
 
         sides.push({
@@ -991,98 +1550,72 @@ const impositionPdf = async ({
                 "BACK",
 
             placements:
-                backPlacements
+                finalBackPlacements
         });
     }
 
 
-    // ========================================================
-    // VALIDATE PAGE REFERENCES
-    // ========================================================
-
-    sides.forEach(
-        side => {
-
-            validateSourcePageReferences({
-
-                placements:
-                    side.placements,
-
-                sourcePageCount,
-
-                side:
-                    side.name
-            });
-        }
-    );
-
-
-    // ========================================================
-    // OUTPUT PDF
-    // ========================================================
-
-    const outputPdf =
-        await PDFDocument.create();
-
-
-    // ========================================================
-    // EMBED SOURCE PAGES
-    // ========================================================
-
-    const embeddedPages =
-        await outputPdf.embedPages(
-            sourcePdf.getPages()
-        );
-
-
-    // ========================================================
-    // FONT
-    // ========================================================
-
-    let font = null;
-
-
     if (
-        normalizedConfig
-            .marks
-            ?.jobInfo
+        sides.length === 0
     ) {
 
-        font =
-            await outputPdf.embedFont(
-                "Helvetica"
-            );
+        throw new Error(
+            "Imposition produced no placements."
+        );
     }
 
 
-    // ========================================================
-    // GENERATE PHYSICAL SIDES
-    // ========================================================
-
-    const generatedSheets = [];
-
+    // -------------------------------------------------
+    // Sheet boundary validation
+    // -------------------------------------------------
 
     for (
         const side
         of sides
     ) {
 
-        // ----------------------------------------------------
-        // VALIDATE
-        // ----------------------------------------------------
-
-        validatePlacements({
+        validatePlacementsAgainstSheet({
 
             placements:
                 side.placements,
 
             sheet
         });
+    }
 
 
-        // ----------------------------------------------------
-        // CREATE PHYSICAL SHEET
-        // ----------------------------------------------------
+    // -------------------------------------------------
+    // Create output PDF
+    // -------------------------------------------------
+
+    const outputPdf =
+        await PDFDocument.create();
+
+
+    // -------------------------------------------------
+    // Embed source pages
+    // -------------------------------------------------
+
+    const embeddedPages =
+        await Promise.all(
+
+            sourcePages.map(
+                page =>
+                    outputPdf.embedPage(
+                        page
+                    )
+            )
+        );
+
+
+    // -------------------------------------------------
+    // Draw sides
+    // -------------------------------------------------
+
+    for (
+        const side
+        of sides
+    ) {
 
         const outputPage =
             outputPdf.addPage([
@@ -1090,30 +1623,37 @@ const impositionPdf = async ({
                 sheet.width,
 
                 sheet.height
-
             ]);
 
 
-        // ----------------------------------------------------
-        // DRAW SOURCE PAGES
-        // ----------------------------------------------------
+        // -------------------------------------------------
+        // Draw imposed pages
+        // -------------------------------------------------
 
         for (
             const placement
             of side.placements
         ) {
 
+            const pageNumber =
+                Number(
+                    placement.pageNumber
+                );
+
+
             const embeddedPage =
                 embeddedPages[
-                    placement.pageNumber - 1
+                    pageNumber - 1
                 ];
 
 
-            if (!embeddedPage) {
+            if (
+                !embeddedPage
+            ) {
 
                 throw new Error(
-                    `Unable to embed source page ` +
-                    `${placement.pageNumber}.`
+
+                    `Unable to embed source page ${pageNumber}.`
                 );
             }
 
@@ -1129,9 +1669,9 @@ const impositionPdf = async ({
         }
 
 
-        // ----------------------------------------------------
-        // PRODUCTION MARKS
-        // ----------------------------------------------------
+        // -------------------------------------------------
+        // Production marks
+        // -------------------------------------------------
 
         drawProductionMarks({
 
@@ -1142,58 +1682,63 @@ const impositionPdf = async ({
                 side.placements,
 
             marks:
-                normalizedConfig.marks,
+                normalizedConfig.marks ??
+                {},
 
             cropMarks:
-                normalizedConfig.cropMarks,
+                normalizedConfig.cropMarks ??
+                {},
 
-            jobInfo:
-                jobInfo ??
-                normalizedConfig.jobInfo ??
-                null,
+            jobInfo,
 
             font
-        });
-
-
-        generatedSheets.push({
-
-            side:
-                side.name,
-
-            placements:
-                side.placements
         });
     }
 
 
-    // ========================================================
-    // FINAL VALIDATION
-    // ========================================================
+    // -------------------------------------------------
+    // Validate final plan
+    // -------------------------------------------------
 
-    generatedSheets.forEach(
-        sheetSide => {
+    for (
+        const side
+        of sides
+    ) {
 
-            validateImpositionPlan({
+        validateImpositionPlan({
 
-                sheet,
+            sheet,
 
-                placements:
-                    sheetSide.placements,
+            sides: [
 
-                sourcePageCount
-            });
-        }
-    );
+                {
+
+                    name:
+                        side.name,
+
+                    placements:
+                        side.placements
+                }
+            ]
+        });
+    }
 
 
-    // ========================================================
-    // SAVE
-    // ========================================================
+    // -------------------------------------------------
+    // Save PDF
+    // -------------------------------------------------
 
     const outputBytes =
         await outputPdf.save();
 
+
+    /*
+        pdf-lib returns Uint8Array.
+
+        Convert it explicitly to Node.js Buffer
+        because GridFS upload and the controller
+        expect a Buffer.
+    */
 
     const outputBuffer =
         Buffer.from(
@@ -1201,16 +1746,72 @@ const impositionPdf = async ({
         );
 
 
-    // ========================================================
-    // RETURN
-    // ========================================================
+    // -------------------------------------------------
+    // Final output validation
+    // -------------------------------------------------
+
+    if (
+        !Buffer.isBuffer(
+            outputBuffer
+        )
+    ) {
+
+        throw new Error(
+            "Failed to convert generated PDF to Buffer."
+        );
+    }
+
+
+    if (
+        outputBuffer.length === 0
+    ) {
+
+        throw new Error(
+            "Generated PDF is empty."
+        );
+    }
+
+
+    // -------------------------------------------------
+    // Return
+    // -------------------------------------------------
 
     return {
 
-        outputBuffer,
+        /*
+            IMPORTANT:
 
-        config:
-            normalizedConfig,
+            Controller expects:
+
+                result.pdfBytes
+
+            and this is now a real Node Buffer.
+        */
+
+        pdfBytes:
+            outputBuffer,
+
+
+        // -------------------------------------------------
+        // Sheet
+        // -------------------------------------------------
+
+        sheet: {
+
+            width:
+                sheet.width,
+
+            height:
+                sheet.height,
+
+            unit:
+                "pt"
+        },
+
+
+        // -------------------------------------------------
+        // Source
+        // -------------------------------------------------
 
         source: {
 
@@ -1224,29 +1825,13 @@ const impositionPdf = async ({
                 sourceHeight,
 
             rotation:
-                sourceDimensions
-                    .rotation
+                sourceDimensions.rotation
         },
 
-        sheet: {
 
-            width:
-                sheet.width,
-
-            height:
-                sheet.height,
-
-            widthInches:
-                sheet.widthInches,
-
-            heightInches:
-                sheet.heightInches
-        },
-
-        foldPattern:
-            pattern.id,
-
-        workStyle,
+        // -------------------------------------------------
+        // Geometry
+        // -------------------------------------------------
 
         geometry: {
 
@@ -1260,10 +1845,10 @@ const impositionPdf = async ({
                 geometry.pageHeight,
 
             gutterHorizontal:
-                geometry.horizontalGutter,
+                geometry.gutterHorizontal,
 
             gutterVertical:
-                geometry.verticalGutter,
+                geometry.gutterVertical,
 
             layoutWidth:
                 geometry.layoutWidth,
@@ -1271,19 +1856,64 @@ const impositionPdf = async ({
             layoutHeight:
                 geometry.layoutHeight,
 
-            startX:
-                geometry.startX,
+            originX:
+                geometry.originX,
 
-            startY:
-                geometry.startY
+            originY:
+                geometry.originY,
+
+            usableArea:
+                geometry.usableArea,
+
+            cropClearance
         },
 
-        sides:
-            generatedSheets
+
+        // -------------------------------------------------
+        // Pattern
+        // -------------------------------------------------
+
+        pattern: {
+
+            id:
+                pattern.id ??
+                patternId ??
+                null,
+
+            pagesPerLayout,
+
+            columns,
+
+            rows
+        },
+
+
+        // -------------------------------------------------
+        // Work Style
+        // -------------------------------------------------
+
+        workStyle:
+            workStyleType,
+
+
+        // -------------------------------------------------
+        // Sides
+        // -------------------------------------------------
+
+        sides
     };
 };
 
 
+// =====================================================
+// EXPORT
+// =====================================================
+
 export {
+    impositionPdf
+};
+
+
+export default {
     impositionPdf
 };
