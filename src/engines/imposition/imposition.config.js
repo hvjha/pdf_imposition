@@ -1,15 +1,56 @@
+/**
+ * ============================================================
+ * PHASE 5 - IMPOSITION CONFIGURATION
+ * ============================================================
+ *
+ * Important:
+ *
+ * Source PDF page size is NOT entered here.
+ *
+ * The source page size is automatically read from
+ * the uploaded PDF by imposition.engine.js.
+ *
+ * User controls:
+ *
+ * - Fold / page layout
+ * - Binding
+ * - Binding edge
+ * - Work style
+ * - Output sheet size
+ * - Margins
+ * - Bleed
+ * - Gutter
+ * - Crop marks
+ * - Quantity
+ * - Fit mode
+ */
+
+
+/**
+ * ============================================================
+ * DEFAULT CONFIGURATION
+ * ============================================================
+ */
+
 const DEFAULT_IMPOSITION_CONFIG = {
-    // =================================================
-    // LAYOUT
-    // =================================================
+
+    /**
+     * --------------------------------------------------------
+     * FOLD / PAGE LAYOUT
+     * --------------------------------------------------------
+     */
 
     layout: {
+
         // Supported:
-        // 2, 4, 8, 16
+        // 2PP
+        // 4PP
+        // 8PP
+        // 16PP
+        // 32PP
 
         pagesPerLayout: 4,
 
-        // Supported:
         // PORTRAIT
         // LANDSCAPE
         // AUTO
@@ -18,12 +59,16 @@ const DEFAULT_IMPOSITION_CONFIG = {
     },
 
 
-    // =================================================
-    // BINDING
-    // =================================================
+    /**
+     * --------------------------------------------------------
+     * BINDING
+     * --------------------------------------------------------
+     */
 
     binding: {
+
         // Supported:
+        //
         // PERFECT_BINDING
         // SADDLE_STITCH
         // CENTER_PIN
@@ -31,151 +76,271 @@ const DEFAULT_IMPOSITION_CONFIG = {
         // WIRE_O
         // FLAT
 
-        type: "PERFECT_BINDING"
+        type:
+            "PERFECT_BINDING",
+
+
+        // Binding edge:
+        //
+        // LEFT
+        // RIGHT
+        // TOP
+        // BOTTOM
+
+        edge:
+            "LEFT"
     },
 
 
-    // =================================================
-    // QUANTITY
-    // =================================================
+    /**
+     * --------------------------------------------------------
+     * WORK STYLE
+     * --------------------------------------------------------
+     */
+
+    workStyle: {
+
+        // Supported:
+        //
+        // SHEETWISE
+        // WORK_AND_TURN
+        // WORK_AND_TUMBLE
+        // PERFECTOR
+        // SINGLE_SIDED
+
+        type:
+            "SHEETWISE"
+    },
+
+
+    /**
+     * --------------------------------------------------------
+     * QUANTITY
+     * --------------------------------------------------------
+     */
 
     quantity: {
+
         // Number of finished copies required
 
-        copies: 1
+        copies:
+            1
     },
 
 
-    // =================================================
-    // PRODUCTION SHEET
-    // =================================================
+    /**
+     * --------------------------------------------------------
+     * OUTPUT PRODUCTION SHEET
+     * --------------------------------------------------------
+     *
+     * This is completely dynamic.
+     *
+     * Example:
+     *
+     * 23 x 36 inch
+     *
+     * is only a default/example.
+     */
 
     sheet: {
-        // Actual sheet size from current
-        // production/reference setup
 
-        width: 24,
-        height: 17.875,
+        width:
+            23,
 
-        unit: "inch"
+        height:
+            36,
+
+        unit:
+            "inch"
     },
 
 
-    // =================================================
-    // BLEED
-    // =================================================
+    /**
+     * --------------------------------------------------------
+     * MARGINS
+     * --------------------------------------------------------
+     */
+
+    margins: {
+
+        top:
+            0,
+
+        right:
+            0,
+
+        bottom:
+            0,
+
+        left:
+            0,
+
+        unit:
+            "mm"
+    },
+
+
+    /**
+     * --------------------------------------------------------
+     * BLEED
+     * --------------------------------------------------------
+     */
 
     bleed: {
-        // Bleed on each side of the page
 
-        top: 5,
-        right: 5,
-        bottom: 5,
-        left: 5,
+        top:
+            5,
 
-        unit: "mm"
+        right:
+            5,
+
+        bottom:
+            5,
+
+        left:
+            5,
+
+        unit:
+            "mm"
     },
 
 
-    // =================================================
-    // CROP MARKS
-    // =================================================
+    /**
+     * --------------------------------------------------------
+     * GUTTER
+     * --------------------------------------------------------
+     */
+
+    gutter: {
+
+        horizontal:
+            0,
+
+        vertical:
+            0,
+
+        unit:
+            "mm"
+    },
+
+
+    /**
+     * --------------------------------------------------------
+     * CROP MARKS
+     * --------------------------------------------------------
+     */
 
     cropMarks: {
-        enabled: true,
+
+        enabled:
+            true,
 
         // Crop mark length
 
-        length: 3,
+        length:
+            3,
 
-        // Distance between trim edge
-        // and beginning of crop mark
+        // Distance from trim edge
+        // to beginning of crop mark
 
-        offset: 2,
+        offset:
+            2,
 
-        unit: "mm"
+        unit:
+            "mm"
     },
 
 
-    // =================================================
-    // SHEET MARGINS
-    // =================================================
-
-    margins: {
-        top: 0,
-        right: 0,
-        bottom: 0,
-        left: 0,
-
-        unit: "mm"
-    },
-
-
-    // =================================================
-    // GUTTER
-    // =================================================
-
-    gutter: {
-        // Horizontal distance between
-        // imposed pages
-
-        horizontal: 0,
-
-        // Vertical distance between
-        // imposed pages
-
-        vertical: 0,
-
-        unit: "mm"
-    },
-
-
-    // =================================================
-    // CREEP
-    // =================================================
+    /**
+     * --------------------------------------------------------
+     * CREEP
+     * --------------------------------------------------------
+     *
+     * Kept in configuration for the later book/signature
+     * production phase.
+     */
 
     creep: {
-        enabled: false,
 
-        // Creep amount per signature/page
-        // Will be implemented later
+        enabled:
+            false,
 
-        value: 0,
+        value:
+            0,
 
-        unit: "mm"
+        unit:
+            "mm"
     },
 
 
-    // =================================================
-    // PRODUCTION MARKS
-    // =================================================
+    /**
+     * --------------------------------------------------------
+     * FIT / SCALING
+     * --------------------------------------------------------
+     *
+     * NONE:
+     * Keep original source dimensions.
+     *
+     * SCALE_TO_FIT:
+     * Proportionally scale the source page to fit
+     * the available cell.
+     */
+
+    fit: {
+
+        mode:
+            "SCALE_TO_FIT"
+    },
+
+
+    /**
+     * --------------------------------------------------------
+     * PRODUCTION MARKS
+     * --------------------------------------------------------
+     */
 
     marks: {
-        enabled: true,
 
-        crop: true,
+        enabled:
+            true,
 
-        registration: false,
+        crop:
+            true,
 
-        colorBar: false,
+        registration:
+            false,
 
-        jobInfo: false
+        colorBar:
+            false,
+
+        jobInfo:
+            false
     }
 };
 
 
-// =====================================================
-// SUPPORTED OPTIONS
-// =====================================================
+/**
+ * ============================================================
+ * SUPPORTED OPTIONS
+ * ============================================================
+ */
 
+
+/**
+ * Fold layouts
+ */
 const SUPPORTED_PAGE_LAYOUTS = [
     2,
     4,
     8,
-    16
+    16,
+    32
 ];
 
 
+/**
+ * Orientation
+ */
 const SUPPORTED_ORIENTATIONS = [
     "PORTRAIT",
     "LANDSCAPE",
@@ -183,40 +348,133 @@ const SUPPORTED_ORIENTATIONS = [
 ];
 
 
+/**
+ * Binding
+ */
 const SUPPORTED_BINDINGS = [
+
     "PERFECT_BINDING",
+
     "SADDLE_STITCH",
+
     "CENTER_PIN",
+
     "CASE_BINDING",
+
     "WIRE_O",
+
     "FLAT"
 ];
 
 
+/**
+ * Binding edge
+ */
+const SUPPORTED_BINDING_EDGES = [
+
+    "LEFT",
+
+    "RIGHT",
+
+    "TOP",
+
+    "BOTTOM"
+];
+
+
+/**
+ * Work styles
+ */
+const SUPPORTED_WORK_STYLES = [
+
+    "SHEETWISE",
+
+    "WORK_AND_TURN",
+
+    "WORK_AND_TUMBLE",
+
+    "PERFECTOR",
+
+    "SINGLE_SIDED"
+];
+
+
+/**
+ * Measurement units
+ */
 const SUPPORTED_UNITS = [
+
     "pt",
+
     "mm",
+
     "inch"
 ];
 
 
-// =====================================================
-// NORMALIZE CONFIGURATION
-// =====================================================
+/**
+ * Fit modes
+ */
+const SUPPORTED_FIT_MODES = [
+
+    "NONE",
+
+    "SCALE_TO_FIT"
+];
+
+
+/**
+ * ============================================================
+ * VALIDATE NON-NEGATIVE BOX
+ * ============================================================
+ */
+
+const validateBoxValues = ({
+    name,
+    values
+}) => {
+
+    const invalid =
+        values.some(
+            value =>
+                !Number.isFinite(value) ||
+                value < 0
+        );
+
+
+    if (invalid) {
+
+        throw new Error(
+            `${name} values must be zero or positive numbers.`
+        );
+    }
+};
+
+
+/**
+ * ============================================================
+ * NORMALIZE CONFIGURATION
+ * ============================================================
+ */
 
 const normalizeImpositionConfig = (
     input = {}
 ) => {
 
-    // -------------------------------------------------
-    // Read sections
-    // -------------------------------------------------
+    /**
+     * --------------------------------------------------------
+     * Read sections
+     * --------------------------------------------------------
+     */
 
     const layout =
         input.layout || {};
 
     const binding =
         input.binding || {};
+
+    const workStyle =
+        input.workStyle || {};
 
     const quantity =
         input.quantity || {};
@@ -230,8 +488,22 @@ const normalizeImpositionConfig = (
     const cropMarks =
         input.cropMarks || {};
 
+    /**
+     * Support both:
+     *
+     * margins
+     *
+     * and
+     *
+     * margin
+     *
+     * so frontend can eventually use singular "margin".
+     */
+
     const margins =
-        input.margins || {};
+        input.margins ||
+        input.margin ||
+        {};
 
     const gutter =
         input.gutter || {};
@@ -242,10 +514,15 @@ const normalizeImpositionConfig = (
     const marks =
         input.marks || {};
 
+    const fit =
+        input.fit || {};
 
-    // =================================================
-    // LAYOUT
-    // =================================================
+
+    /**
+     * ========================================================
+     * LAYOUT
+     * ========================================================
+     */
 
     const pagesPerLayout =
         Number(
@@ -263,9 +540,8 @@ const normalizeImpositionConfig = (
     ) {
 
         throw new Error(
-            "pagesPerLayout must be 2, 4, 8 or 16."
+            "pagesPerLayout must be 2, 4, 8, 16 or 32."
         );
-
     }
 
 
@@ -275,7 +551,8 @@ const normalizeImpositionConfig = (
             DEFAULT_IMPOSITION_CONFIG
                 .layout
                 .orientation
-        ).toUpperCase();
+        )
+            .toUpperCase();
 
 
     if (
@@ -287,13 +564,14 @@ const normalizeImpositionConfig = (
         throw new Error(
             "Orientation must be PORTRAIT, LANDSCAPE or AUTO."
         );
-
     }
 
 
-    // =================================================
-    // BINDING
-    // =================================================
+    /**
+     * ========================================================
+     * BINDING
+     * ========================================================
+     */
 
     const bindingType =
         String(
@@ -301,7 +579,8 @@ const normalizeImpositionConfig = (
             DEFAULT_IMPOSITION_CONFIG
                 .binding
                 .type
-        ).toUpperCase();
+        )
+            .toUpperCase();
 
 
     if (
@@ -313,13 +592,64 @@ const normalizeImpositionConfig = (
         throw new Error(
             `Unsupported binding type: ${bindingType}`
         );
-
     }
 
 
-    // =================================================
-    // QUANTITY
-    // =================================================
+    const bindingEdge =
+        String(
+            binding.edge ??
+            DEFAULT_IMPOSITION_CONFIG
+                .binding
+                .edge
+        )
+            .toUpperCase();
+
+
+    if (
+        !SUPPORTED_BINDING_EDGES.includes(
+            bindingEdge
+        )
+    ) {
+
+        throw new Error(
+            `Unsupported binding edge: ${bindingEdge}`
+        );
+    }
+
+
+    /**
+     * ========================================================
+     * WORK STYLE
+     * ========================================================
+     */
+
+    const workStyleType =
+        String(
+            workStyle.type ??
+            DEFAULT_IMPOSITION_CONFIG
+                .workStyle
+                .type
+        )
+            .toUpperCase();
+
+
+    if (
+        !SUPPORTED_WORK_STYLES.includes(
+            workStyleType
+        )
+    ) {
+
+        throw new Error(
+            `Unsupported work style: ${workStyleType}`
+        );
+    }
+
+
+    /**
+     * ========================================================
+     * QUANTITY
+     * ========================================================
+     */
 
     const copies =
         Number(
@@ -338,13 +668,14 @@ const normalizeImpositionConfig = (
         throw new Error(
             "Quantity copies must be a positive integer."
         );
-
     }
 
 
-    // =================================================
-    // SHEET
-    // =================================================
+    /**
+     * ========================================================
+     * SHEET
+     * ========================================================
+     */
 
     const sheetWidth =
         Number(
@@ -370,7 +701,8 @@ const normalizeImpositionConfig = (
             DEFAULT_IMPOSITION_CONFIG
                 .sheet
                 .unit
-        ).toLowerCase();
+        )
+            .toLowerCase();
 
 
     if (
@@ -381,7 +713,6 @@ const normalizeImpositionConfig = (
         throw new Error(
             "Sheet width must be greater than zero."
         );
-
     }
 
 
@@ -393,7 +724,6 @@ const normalizeImpositionConfig = (
         throw new Error(
             "Sheet height must be greater than zero."
         );
-
     }
 
 
@@ -406,13 +736,14 @@ const normalizeImpositionConfig = (
         throw new Error(
             `Unsupported sheet unit: ${sheetUnit}`
         );
-
     }
 
 
-    // =================================================
-    // BLEED
-    // =================================================
+    /**
+     * ========================================================
+     * BLEED
+     * ========================================================
+     */
 
     const bleedUnit =
         String(
@@ -420,7 +751,8 @@ const normalizeImpositionConfig = (
             DEFAULT_IMPOSITION_CONFIG
                 .bleed
                 .unit
-        ).toLowerCase();
+        )
+            .toLowerCase();
 
 
     if (
@@ -432,7 +764,6 @@ const normalizeImpositionConfig = (
         throw new Error(
             `Unsupported bleed unit: ${bleedUnit}`
         );
-
     }
 
 
@@ -472,36 +803,32 @@ const normalizeImpositionConfig = (
 
         unit:
             bleedUnit
-
     };
 
 
-    const bleedValues = [
-        normalizedBleed.top,
-        normalizedBleed.right,
-        normalizedBleed.bottom,
-        normalizedBleed.left
-    ];
+    validateBoxValues({
+
+        name:
+            "Bleed",
+
+        values: [
+
+            normalizedBleed.top,
+
+            normalizedBleed.right,
+
+            normalizedBleed.bottom,
+
+            normalizedBleed.left
+        ]
+    });
 
 
-    if (
-        bleedValues.some(
-            (value) =>
-                !Number.isFinite(value) ||
-                value < 0
-        )
-    ) {
-
-        throw new Error(
-            "Bleed values must be zero or positive numbers."
-        );
-
-    }
-
-
-    // =================================================
-    // CROP MARKS
-    // =================================================
+    /**
+     * ========================================================
+     * CROP MARKS
+     * ========================================================
+     */
 
     const cropMarkUnit =
         String(
@@ -509,7 +836,8 @@ const normalizeImpositionConfig = (
             DEFAULT_IMPOSITION_CONFIG
                 .cropMarks
                 .unit
-        ).toLowerCase();
+        )
+            .toLowerCase();
 
 
     if (
@@ -521,7 +849,6 @@ const normalizeImpositionConfig = (
         throw new Error(
             `Unsupported crop mark unit: ${cropMarkUnit}`
         );
-
     }
 
 
@@ -553,7 +880,6 @@ const normalizeImpositionConfig = (
         throw new Error(
             "Crop mark length must be greater than zero."
         );
-
     }
 
 
@@ -567,7 +893,6 @@ const normalizeImpositionConfig = (
         throw new Error(
             "Crop mark offset cannot be negative."
         );
-
     }
 
 
@@ -589,13 +914,14 @@ const normalizeImpositionConfig = (
 
         unit:
             cropMarkUnit
-
     };
 
 
-    // =================================================
-    // MARGINS
-    // =================================================
+    /**
+     * ========================================================
+     * MARGINS
+     * ========================================================
+     */
 
     const marginUnit =
         String(
@@ -603,7 +929,8 @@ const normalizeImpositionConfig = (
             DEFAULT_IMPOSITION_CONFIG
                 .margins
                 .unit
-        ).toLowerCase();
+        )
+            .toLowerCase();
 
 
     if (
@@ -615,7 +942,6 @@ const normalizeImpositionConfig = (
         throw new Error(
             `Unsupported margin unit: ${marginUnit}`
         );
-
     }
 
 
@@ -623,56 +949,64 @@ const normalizeImpositionConfig = (
 
         top:
             Number(
-                margins.top ?? 0
+                margins.top ??
+                DEFAULT_IMPOSITION_CONFIG
+                    .margins
+                    .top
             ),
 
         right:
             Number(
-                margins.right ?? 0
+                margins.right ??
+                DEFAULT_IMPOSITION_CONFIG
+                    .margins
+                    .right
             ),
 
         bottom:
             Number(
-                margins.bottom ?? 0
+                margins.bottom ??
+                DEFAULT_IMPOSITION_CONFIG
+                    .margins
+                    .bottom
             ),
 
         left:
             Number(
-                margins.left ?? 0
+                margins.left ??
+                DEFAULT_IMPOSITION_CONFIG
+                    .margins
+                    .left
             ),
 
         unit:
             marginUnit
-
     };
 
 
-    const marginValues = [
-        normalizedMargins.top,
-        normalizedMargins.right,
-        normalizedMargins.bottom,
-        normalizedMargins.left
-    ];
+    validateBoxValues({
+
+        name:
+            "Margin",
+
+        values: [
+
+            normalizedMargins.top,
+
+            normalizedMargins.right,
+
+            normalizedMargins.bottom,
+
+            normalizedMargins.left
+        ]
+    });
 
 
-    if (
-        marginValues.some(
-            (value) =>
-                !Number.isFinite(value) ||
-                value < 0
-        )
-    ) {
-
-        throw new Error(
-            "Margin values must be zero or positive numbers."
-        );
-
-    }
-
-
-    // =================================================
-    // GUTTER
-    // =================================================
+    /**
+     * ========================================================
+     * GUTTER
+     * ========================================================
+     */
 
     const gutterUnit =
         String(
@@ -680,7 +1014,8 @@ const normalizeImpositionConfig = (
             DEFAULT_IMPOSITION_CONFIG
                 .gutter
                 .unit
-        ).toLowerCase();
+        )
+            .toLowerCase();
 
 
     if (
@@ -692,7 +1027,6 @@ const normalizeImpositionConfig = (
         throw new Error(
             `Unsupported gutter unit: ${gutterUnit}`
         );
-
     }
 
 
@@ -700,35 +1034,44 @@ const normalizeImpositionConfig = (
 
         horizontal:
             Number(
-                gutter.horizontal ?? 0
+                gutter.horizontal ??
+                DEFAULT_IMPOSITION_CONFIG
+                    .gutter
+                    .horizontal
             ),
 
         vertical:
             Number(
-                gutter.vertical ?? 0
+                gutter.vertical ??
+                DEFAULT_IMPOSITION_CONFIG
+                    .gutter
+                    .vertical
             ),
 
         unit:
             gutterUnit
-
     };
 
 
-    if (
-        normalizedGutter.horizontal < 0 ||
-        normalizedGutter.vertical < 0
-    ) {
+    validateBoxValues({
 
-        throw new Error(
-            "Gutter values cannot be negative."
-        );
+        name:
+            "Gutter",
 
-    }
+        values: [
+
+            normalizedGutter.horizontal,
+
+            normalizedGutter.vertical
+        ]
+    });
 
 
-    // =================================================
-    // CREEP
-    // =================================================
+    /**
+     * ========================================================
+     * CREEP
+     * ========================================================
+     */
 
     const creepUnit =
         String(
@@ -736,7 +1079,8 @@ const normalizeImpositionConfig = (
             DEFAULT_IMPOSITION_CONFIG
                 .creep
                 .unit
-        ).toLowerCase();
+        )
+            .toLowerCase();
 
 
     if (
@@ -748,13 +1092,15 @@ const normalizeImpositionConfig = (
         throw new Error(
             `Unsupported creep unit: ${creepUnit}`
         );
-
     }
 
 
     const creepValue =
         Number(
-            creep.value ?? 0
+            creep.value ??
+            DEFAULT_IMPOSITION_CONFIG
+                .creep
+                .value
         );
 
 
@@ -768,7 +1114,6 @@ const normalizeImpositionConfig = (
         throw new Error(
             "Creep value cannot be negative."
         );
-
     }
 
 
@@ -776,7 +1121,10 @@ const normalizeImpositionConfig = (
 
         enabled:
             Boolean(
-                creep.enabled ?? false
+                creep.enabled ??
+                DEFAULT_IMPOSITION_CONFIG
+                    .creep
+                    .enabled
             ),
 
         value:
@@ -784,47 +1132,92 @@ const normalizeImpositionConfig = (
 
         unit:
             creepUnit
-
     };
 
 
-    // =================================================
-    // PRODUCTION MARKS
-    // =================================================
+    /**
+     * ========================================================
+     * FIT
+     * ========================================================
+     */
+
+    const fitMode =
+        String(
+            fit.mode ??
+            DEFAULT_IMPOSITION_CONFIG
+                .fit
+                .mode
+        )
+            .toUpperCase();
+
+
+    if (
+        !SUPPORTED_FIT_MODES.includes(
+            fitMode
+        )
+    ) {
+
+        throw new Error(
+            `Unsupported fit mode: ${fitMode}`
+        );
+    }
+
+
+    /**
+     * ========================================================
+     * PRODUCTION MARKS
+     * ========================================================
+     */
 
     const normalizedMarks = {
 
         enabled:
             Boolean(
-                marks.enabled ?? true
+                marks.enabled ??
+                DEFAULT_IMPOSITION_CONFIG
+                    .marks
+                    .enabled
             ),
 
         crop:
             Boolean(
-                marks.crop ?? true
+                marks.crop ??
+                DEFAULT_IMPOSITION_CONFIG
+                    .marks
+                    .crop
             ),
 
         registration:
             Boolean(
-                marks.registration ?? false
+                marks.registration ??
+                DEFAULT_IMPOSITION_CONFIG
+                    .marks
+                    .registration
             ),
 
         colorBar:
             Boolean(
-                marks.colorBar ?? false
+                marks.colorBar ??
+                DEFAULT_IMPOSITION_CONFIG
+                    .marks
+                    .colorBar
             ),
 
         jobInfo:
             Boolean(
-                marks.jobInfo ?? false
+                marks.jobInfo ??
+                DEFAULT_IMPOSITION_CONFIG
+                    .marks
+                    .jobInfo
             )
-
     };
 
 
-    // =================================================
-    // FINAL CONFIGURATION
-    // =================================================
+    /**
+     * ========================================================
+     * FINAL NORMALIZED CONFIG
+     * ========================================================
+     */
 
     return {
 
@@ -833,22 +1226,29 @@ const normalizeImpositionConfig = (
             pagesPerLayout,
 
             orientation
-
         },
 
 
         binding: {
 
             type:
-                bindingType
+                bindingType,
 
+            edge:
+                bindingEdge
+        },
+
+
+        workStyle: {
+
+            type:
+                workStyleType
         },
 
 
         quantity: {
 
             copies
-
         },
 
 
@@ -862,7 +1262,6 @@ const normalizeImpositionConfig = (
 
             unit:
                 sheetUnit
-
         },
 
 
@@ -874,7 +1273,20 @@ const normalizeImpositionConfig = (
             normalizedCropMarks,
 
 
+        /**
+         * Keep "margins" as the canonical
+         * backend property for compatibility
+         * with your existing code.
+         */
         margins:
+            normalizedMargins,
+
+
+        /**
+         * Also expose singular "margin"
+         * for the new Phase 5 engine/frontend.
+         */
+        margin:
             normalizedMargins,
 
 
@@ -886,15 +1298,27 @@ const normalizeImpositionConfig = (
             normalizedCreep,
 
 
+        fit: {
+
+            mode:
+                fitMode
+        },
+
+
         marks:
             normalizedMarks
-
     };
-
 };
 
 
+/**
+ * ============================================================
+ * EXPORTS
+ * ============================================================
+ */
+
 export {
+
     DEFAULT_IMPOSITION_CONFIG,
 
     SUPPORTED_PAGE_LAYOUTS,
@@ -903,7 +1327,13 @@ export {
 
     SUPPORTED_BINDINGS,
 
+    SUPPORTED_BINDING_EDGES,
+
+    SUPPORTED_WORK_STYLES,
+
     SUPPORTED_UNITS,
+
+    SUPPORTED_FIT_MODES,
 
     normalizeImpositionConfig
 };

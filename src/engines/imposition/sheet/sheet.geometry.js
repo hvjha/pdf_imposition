@@ -1,919 +1,291 @@
-import {
-    toPoints
-} from "../imposition.utils.js";
+const PT_PER_INCH = 72;
+const PT_PER_MM = 72 / 25.4;
+
+/* =========================================================
+   UNIT CONVERSION
+========================================================= */
+
+export function inchesToPoints(value) {
+    return Number(value) * PT_PER_INCH;
+}
+
+export function mmToPoints(value) {
+    return Number(value) * PT_PER_MM;
+}
+
+export function pointsToInches(value) {
+    return Number(value) / PT_PER_INCH;
+}
+
+export function pointsToMm(value) {
+    return Number(value) / PT_PER_MM;
+}
+
+export function toPoints(value, unit) {
+    const numericValue = Number(value);
+
+    if (!Number.isFinite(numericValue)) {
+        throw new Error(`Invalid measurement: ${value}`);
+    }
+
+    switch (String(unit || "pt").toLowerCase()) {
+        case "pt":
+        case "point":
+        case "points":
+            return numericValue;
+
+        case "mm":
+        case "millimeter":
+        case "millimeters":
+            return mmToPoints(numericValue);
+
+        case "in":
+        case "inch":
+        case "inches":
+            return inchesToPoints(numericValue);
+
+        default:
+            throw new Error(`Unsupported unit: ${unit}`);
+    }
+}
 
 
-// =====================================================
-// CONVERT CONFIG VALUE TO POINTS
-// =====================================================
+/* =========================================================
+   BOX NORMALIZATION
+========================================================= */
 
-const measurementToPoints = (
-    value,
-    unit = "pt"
-) => {
+export function normalizeBox(box = {}) {
+    const unit = box.unit || "mm";
 
-    return toPoints(
-        Number(value),
-        unit
-    );
-
-};
-
-
-// =====================================================
-// GET SHEET GEOMETRY
-// =====================================================
-
-const calculateSheetGeometry = ({
-    sheet,
-    margins,
-    bleed,
-    gutter
-}) => {
-
-    const sheetWidth =
-        measurementToPoints(
-            sheet.width,
-            sheet.unit
-        );
-
-    const sheetHeight =
-        measurementToPoints(
-            sheet.height,
-            sheet.unit
-        );
+    return {
+        top: toPoints(box.top || 0, unit),
+        right: toPoints(box.right || 0, unit),
+        bottom: toPoints(box.bottom || 0, unit),
+        left: toPoints(box.left || 0, unit)
+    };
+}
 
 
-    const marginTop =
-        measurementToPoints(
-            margins.top,
-            margins.unit
-        );
+/* =========================================================
+   SHEET NORMALIZATION
+========================================================= */
 
-    const marginRight =
-        measurementToPoints(
-            margins.right,
-            margins.unit
-        );
+export function normalizeSheet(sheet) {
+    if (!sheet) {
+        throw new Error("Sheet configuration is required.");
+    }
 
-    const marginBottom =
-        measurementToPoints(
-            margins.bottom,
-            margins.unit
-        );
+    const width = toPoints(sheet.width, sheet.unit);
+    const height = toPoints(sheet.height, sheet.unit);
 
-    const marginLeft =
-        measurementToPoints(
-            margins.left,
-            margins.unit
-        );
-
-
-    const bleedTop =
-        measurementToPoints(
-            bleed.top,
-            bleed.unit
-        );
-
-    const bleedRight =
-        measurementToPoints(
-            bleed.right,
-            bleed.unit
-        );
-
-    const bleedBottom =
-        measurementToPoints(
-            bleed.bottom,
-            bleed.unit
-        );
-
-    const bleedLeft =
-        measurementToPoints(
-            bleed.left,
-            bleed.unit
-        );
-
-
-    const gutterHorizontal =
-        measurementToPoints(
-            gutter.horizontal,
-            gutter.unit
-        );
-
-    const gutterVertical =
-        measurementToPoints(
-            gutter.vertical,
-            gutter.unit
-        );
-
-
-    if (
-        sheetWidth <= 0 ||
-        sheetHeight <= 0
-    ) {
+    if (width <= 0 || height <= 0) {
         throw new Error(
             "Sheet width and height must be greater than zero."
         );
     }
 
+    return {
+        width,
+        height,
+        widthInches: pointsToInches(width),
+        heightInches: pointsToInches(height)
+    };
+}
 
-    const usableX =
-        marginLeft;
 
-    const usableY =
-        marginBottom;
+/* =========================================================
+   SHEET GEOMETRY
+========================================================= */
+
+export function createSheetGeometry(config) {
+    const sheet = normalizeSheet(config.sheet);
+
+    // Support both:
+    // config.margin
+    // config.margins
+    const marginConfig =
+        config.margin ||
+        config.margins ||
+        {};
+
+    const margin = normalizeBox(marginConfig);
+    const bleed = normalizeBox(config.bleed);
 
     const usableWidth =
-        sheetWidth -
-        marginLeft -
-        marginRight;
+        sheet.width -
+        margin.left -
+        margin.right;
 
     const usableHeight =
-        sheetHeight -
-        marginTop -
-        marginBottom;
+        sheet.height -
+        margin.top -
+        margin.bottom;
 
-
-    if (
-        usableWidth <= 0 ||
-        usableHeight <= 0
-    ) {
+    if (usableWidth <= 0 || usableHeight <= 0) {
         throw new Error(
-            "Sheet margins leave no usable production area."
+            "Margins are larger than the available sheet area."
         );
     }
 
-
     return {
+        sheet,
 
-        sheet: {
-            width: sheetWidth,
-            height: sheetHeight
-        },
+        margin,
 
-        margins: {
-            top: marginTop,
-            right: marginRight,
-            bottom: marginBottom,
-            left: marginLeft
-        },
-
-        bleed: {
-            top: bleedTop,
-            right: bleedRight,
-            bottom: bleedBottom,
-            left: bleedLeft
-        },
-
-        gutter: {
-            horizontal:
-                gutterHorizontal,
-
-            vertical:
-                gutterVertical
-        },
+        bleed,
 
         usableArea: {
-            x: usableX,
-            y: usableY,
+            x: margin.left,
+            y: margin.bottom,
             width: usableWidth,
             height: usableHeight
         }
     };
-
-};
-
-
-// =====================================================
-// GET GRID
-// =====================================================
-
-const calculateGrid = (
-    pagesPerLayout
-) => {
-
-    switch (
-        pagesPerLayout
-    ) {
-
-        case 2:
-
-            return {
-                columns: 2,
-                rows: 1
-            };
+}
 
 
-        case 4:
+/* =========================================================
+   GRID GEOMETRY
+========================================================= */
 
-            return {
-                columns: 2,
-                rows: 2
-            };
-
-
-        case 8:
-
-            return {
-                columns: 4,
-                rows: 2
-            };
-
-
-        case 16:
-
-            return {
-                columns: 4,
-                rows: 4
-            };
-
-
-        default:
-
-            throw new Error(
-                "Supported layouts are 2, 4, 8 and 16."
-            );
-    }
-
-};
-
-
-// =====================================================
-// CALCULATE PAGE SIZE FROM SOURCE PAGE
-// =====================================================
-//
-// IMPORTANT:
-//
-// sourceWidth/sourceHeight = trim/artwork source size
-//
-// We preserve the source aspect ratio.
-//
-// The calculated page footprint is BLEED-INCLUSIVE.
-//
-// Example:
-//
-// source = 846 x 612 pt
-// bleed  = 5 mm
-//
-// We calculate the largest proportional page that
-// can fit into the selected grid.
-//
-// =====================================================
-
-const calculatePageFootprint = ({
-    geometry,
-    pagesPerLayout,
-    sourceWidth,
-    sourceHeight,
-    scale = 1
-}) => {
-
+export function createGridGeometry(
+    usableArea,
+    columns,
+    rows,
+    gutter = {}
+) {
     if (
-        !Number.isFinite(
-            sourceWidth
-        ) ||
-        !Number.isFinite(
-            sourceHeight
-        ) ||
-        sourceWidth <= 0 ||
-        sourceHeight <= 0
+        !usableArea ||
+        !Number.isFinite(usableArea.x) ||
+        !Number.isFinite(usableArea.y) ||
+        !Number.isFinite(usableArea.width) ||
+        !Number.isFinite(usableArea.height)
     ) {
         throw new Error(
-            "Invalid source page dimensions."
+            "Valid usable sheet area is required."
         );
     }
 
+    if (
+        !Number.isInteger(columns) ||
+        columns <= 0
+    ) {
+        throw new Error(
+            "Grid columns must be a positive integer."
+        );
+    }
 
-    const {
-        columns,
-        rows
-    } = calculateGrid(
-        pagesPerLayout
-    );
+    if (
+        !Number.isInteger(rows) ||
+        rows <= 0
+    ) {
+        throw new Error(
+            "Grid rows must be a positive integer."
+        );
+    }
 
+    const horizontalGutter =
+        Number(gutter.horizontal || 0);
 
-    const {
-        width:
-            usableWidth,
+    const verticalGutter =
+        Number(gutter.vertical || 0);
 
-        height:
-            usableHeight
-    } = geometry.usableArea;
+    if (
+        !Number.isFinite(horizontalGutter) ||
+        !Number.isFinite(verticalGutter)
+    ) {
+        throw new Error(
+            "Grid gutter values must be valid numbers."
+        );
+    }
 
-
-    const {
-        horizontal:
-            gutterHorizontal,
-
-        vertical:
-            gutterVertical
-    } = geometry.gutter;
-
+    if (
+        horizontalGutter < 0 ||
+        verticalGutter < 0
+    ) {
+        throw new Error(
+            "Grid gutter values cannot be negative."
+        );
+    }
 
     const totalHorizontalGutter =
-        gutterHorizontal *
-        Math.max(
-            columns - 1,
-            0
-        );
-
+        horizontalGutter * (columns - 1);
 
     const totalVerticalGutter =
-        gutterVertical *
-        Math.max(
-            rows - 1,
-            0
-        );
-
+        verticalGutter * (rows - 1);
 
     const availableWidth =
-        usableWidth -
+        usableArea.width -
         totalHorizontalGutter;
 
-
     const availableHeight =
-        usableHeight -
+        usableArea.height -
         totalVerticalGutter;
 
-
-    if (
-        availableWidth <= 0 ||
-        availableHeight <= 0
-    ) {
-        throw new Error(
-            "Gutter configuration leaves no usable page area."
-        );
-    }
-
-
-    /*
-     * Maximum cell size
-     */
     const cellWidth =
-        availableWidth /
-        columns;
+        availableWidth / columns;
 
     const cellHeight =
-        availableHeight /
-        rows;
-
-
-    /*
-     * Preserve source aspect ratio
-     */
-    const sourceRatio =
-        sourceWidth /
-        sourceHeight;
-
-
-    const cellRatio =
-        cellWidth /
-        cellHeight;
-
-
-    let trimWidth;
-    let trimHeight;
-
+        availableHeight / rows;
 
     if (
-        sourceRatio >= cellRatio
+        cellWidth <= 0 ||
+        cellHeight <= 0
     ) {
-
-        trimWidth =
-            cellWidth *
-            scale;
-
-        trimHeight =
-            trimWidth /
-            sourceRatio;
-
-    } else {
-
-        trimHeight =
-            cellHeight *
-            scale;
-
-        trimWidth =
-            trimHeight *
-            sourceRatio;
+        throw new Error(
+            "Sheet is too small for the requested grid."
+        );
     }
 
-
-    /*
-     * Bleed-inclusive footprint
-     */
-    const bleed =
-        geometry.bleed;
-
-
-    const bleedWidth =
-        trimWidth +
-        bleed.left +
-        bleed.right;
-
-
-    const bleedHeight =
-        trimHeight +
-        bleed.top +
-        bleed.bottom;
-
-
-    /*
-     * Make sure bleed also fits inside
-     * the calculated cell.
-     */
-    if (
-        bleedWidth >
-            cellWidth + 0.001 ||
-        bleedHeight >
-            cellHeight + 0.001
-    ) {
-
-        const bleedScaleX =
-            cellWidth /
-            bleedWidth;
-
-        const bleedScaleY =
-            cellHeight /
-            bleedHeight;
-
-        const correctionScale =
-            Math.min(
-                bleedScaleX,
-                bleedScaleY
-            );
-
-
-        trimWidth *=
-            correctionScale;
-
-        trimHeight *=
-            correctionScale;
-    }
-
-
-    const finalBleedWidth =
-        trimWidth +
-        bleed.left +
-        bleed.right;
-
-    const finalBleedHeight =
-        trimHeight +
-        bleed.top +
-        bleed.bottom;
-
-
-    return {
-
-        columns,
-        rows,
-
-        cellWidth,
-        cellHeight,
-
-        availableWidth,
-        availableHeight,
-
-        totalHorizontalGutter,
-        totalVerticalGutter,
-
-        sourceWidth,
-        sourceHeight,
-
-        trimWidth,
-        trimHeight,
-
-        bleedWidth:
-            finalBleedWidth,
-
-        bleedHeight:
-            finalBleedHeight,
-
-        scale:
-            trimWidth /
-            sourceWidth
-    };
-
-};
-
-
-// =====================================================
-// CALCULATE ARTWORK FOOTPRINT
-// =====================================================
-
-const calculateArtworkFootprint = ({
-    trimWidth,
-    trimHeight,
-    bleed
-}) => {
-
-    const bleedLeft =
-        measurementToPoints(
-            bleed.left,
-            bleed.unit
-        );
-
-    const bleedRight =
-        measurementToPoints(
-            bleed.right,
-            bleed.unit
-        );
-
-    const bleedTop =
-        measurementToPoints(
-            bleed.top,
-            bleed.unit
-        );
-
-    const bleedBottom =
-        measurementToPoints(
-            bleed.bottom,
-            bleed.unit
-        );
-
-
-    const bleedWidth =
-        trimWidth +
-        bleedLeft +
-        bleedRight;
-
-    const bleedHeight =
-        trimHeight +
-        bleedTop +
-        bleedBottom;
-
-
-    return {
-
-        trimWidth,
-        trimHeight,
-
-        bleedWidth,
-        bleedHeight,
-
-        bleed: {
-
-            left:
-                bleedLeft,
-
-            right:
-                bleedRight,
-
-            top:
-                bleedTop,
-
-            bottom:
-                bleedBottom
-        }
-    };
-
-};
-
-
-// =====================================================
-// CALCULATE FINAL POSITIONS
-// =====================================================
-
-const calculateGridPositions = ({
-    geometry,
-    trimWidth,
-    trimHeight,
-    pagesPerLayout
-}) => {
-
-    const {
-        columns,
-        rows
-    } = calculateGrid(
-        pagesPerLayout
-    );
-
-
-    const {
-        usableArea
-    } = geometry;
-
-
-    const {
-        horizontal:
-            gutterHorizontal,
-
-        vertical:
-            gutterVertical
-    } = geometry.gutter;
-
-
-    const bleed =
-        geometry.bleed;
-
-
-    const bleedWidth =
-        trimWidth +
-        bleed.left +
-        bleed.right;
-
-
-    const bleedHeight =
-        trimHeight +
-        bleed.top +
-        bleed.bottom;
-
-
-    /*
-     * Total grid size
-     */
-    const gridWidth =
-        columns *
-            bleedWidth +
-        (columns - 1) *
-            gutterHorizontal;
-
-
-    const gridHeight =
-        rows *
-            bleedHeight +
-        (rows - 1) *
-            gutterVertical;
-
-
-    /*
-     * Center entire imposition
-     * inside usable sheet area.
-     */
-    const startX =
-        usableArea.x +
-        (
-            usableArea.width -
-            gridWidth
-        ) / 2;
-
-
-    const startY =
-        usableArea.y +
-        (
-            usableArea.height -
-            gridHeight
-        ) / 2;
-
-
-    const positions = [];
-
+    const cells = [];
 
     for (
         let row = 0;
         row < rows;
         row++
     ) {
-
         for (
             let column = 0;
             column < columns;
             column++
         ) {
+            cells.push({
+                row,
+                column,
 
-            const bleedX =
-                startX +
-                column *
-                (
-                    bleedWidth +
-                    gutterHorizontal
-                );
+                x:
+                    usableArea.x +
+                    column *
+                    (
+                        cellWidth +
+                        horizontalGutter
+                    ),
 
+                y:
+                    usableArea.y +
+                    (
+                        rows -
+                        row -
+                        1
+                    ) *
+                    (
+                        cellHeight +
+                        verticalGutter
+                    ),
 
-            const bleedY =
-                startY +
-                (
-                    rows -
-                    1 -
-                    row
-                ) *
-                (
-                    bleedHeight +
-                    gutterVertical
-                );
-
-
-            /*
-             * x/y refer to TRIM position.
-             */
-            const x =
-                bleedX +
-                bleed.left;
-
-
-            const y =
-                bleedY +
-                bleedBottomOffset(
-                    geometry
-                );
-
-
-            positions.push({
-
-                position:
-                    positions.length + 1,
-
-                x,
-                y,
-
-                width:
-                    trimWidth,
-
-                height:
-                    trimHeight,
-
-                bleedX,
-                bleedY,
-
-                bleedWidth,
-                bleedHeight
+                width: cellWidth,
+                height: cellHeight
             });
         }
     }
 
-
-    return positions;
-
-};
-
-
-// =====================================================
-// BLEED BOTTOM OFFSET
-// =====================================================
-
-const bleedBottomOffset = (
-    geometry
-) => {
-
-    return geometry.bleed.bottom;
-
-};
-
-
-// =====================================================
-// COMPLETE GEOMETRY CALCULATION
-// =====================================================
-
-const calculateImpositionGeometry = ({
-    config,
-    sourceWidth,
-    sourceHeight
-}) => {
-
-    if (
-        !Number.isFinite(
-            sourceWidth
-        ) ||
-        !Number.isFinite(
-            sourceHeight
-        )
-    ) {
-        throw new Error(
-            "Source page dimensions are required."
-        );
-    }
-
-
-    const geometry =
-        calculateSheetGeometry({
-
-            sheet:
-                config.sheet,
-
-            margins:
-                config.margins,
-
-            bleed:
-                config.bleed,
-
-            gutter:
-                config.gutter
-        });
-
-
-    const footprint =
-        calculatePageFootprint({
-
-            geometry,
-
-            pagesPerLayout:
-                config.layout
-                    .pagesPerLayout,
-
-            sourceWidth,
-            sourceHeight
-        });
-
-
-    const artwork =
-        calculateArtworkFootprint({
-
-            trimWidth:
-                footprint.trimWidth,
-
-            trimHeight:
-                footprint.trimHeight,
-
-            bleed:
-                config.bleed
-        });
-
-
-    const positions =
-        calculateGridPositions({
-
-            geometry,
-
-            trimWidth:
-                artwork.trimWidth,
-
-            trimHeight:
-                artwork.trimHeight,
-
-            pagesPerLayout:
-                config.layout
-                    .pagesPerLayout
-        });
-
-
     return {
+        columns,
+        rows,
 
-        sheet:
-            geometry.sheet,
+        cellWidth,
+        cellHeight,
 
-        margins:
-            geometry.margins,
-
-        bleed:
-            geometry.bleed,
-
-        gutter:
-            geometry.gutter,
-
-        usableArea:
-            geometry.usableArea,
-
-        grid: {
-
-            columns:
-                footprint.columns,
-
-            rows:
-                footprint.rows
-        },
-
-        source: {
-
-            width:
-                sourceWidth,
-
-            height:
-                sourceHeight
-        },
-
-        scale:
-            footprint.scale,
-
-        cell: {
-
-            width:
-                footprint.cellWidth,
-
-            height:
-                footprint.cellHeight
-        },
-
-        footprint: {
-
-            width:
-                artwork.bleedWidth,
-
-            height:
-                artwork.bleedHeight
-        },
-
-        trim: {
-
-            width:
-                artwork.trimWidth,
-
-            height:
-                artwork.trimHeight
-        },
-
-        artwork,
-
-        positions
+        cells
     };
-
-};
-
-
-export {
-    calculateSheetGeometry,
-    calculateGrid,
-    calculatePageFootprint,
-    calculateArtworkFootprint,
-    calculateGridPositions,
-    calculateImpositionGeometry
-};
+}

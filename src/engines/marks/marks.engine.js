@@ -2,9 +2,13 @@ import { rgb } from "pdf-lib";
 
 
 /**
- * Convert measurement to PDF points
+ * ============================================================
+ * MEASUREMENT CONVERSION
+ * ============================================================
  */
+
 const toPoints = (value, unit = "mm") => {
+
     if (
         typeof value !== "number" ||
         !Number.isFinite(value)
@@ -14,14 +18,20 @@ const toPoints = (value, unit = "mm") => {
         );
     }
 
-    switch (unit) {
+    switch (
+        String(unit).toLowerCase()
+    ) {
+
         case "mm":
             return value * (72 / 25.4);
 
         case "inch":
+        case "in":
             return value * 72;
 
         case "pt":
+        case "point":
+        case "points":
             return value;
 
         default:
@@ -33,11 +43,19 @@ const toPoints = (value, unit = "mm") => {
 
 
 /**
- * Draw crop marks around one imposed page
+ * ============================================================
+ * CROP MARKS
+ * ============================================================
  *
- * x/y = artwork position
- * width/height = artwork dimensions
+ * Draws four corner crop marks around an imposed page.
+ *
+ * x/y       = artwork position
+ * width     = artwork width
+ * height    = artwork height
+ * length    = crop mark length
+ * offset    = distance from artwork edge
  */
+
 const drawCropMarks = ({
     page,
     x,
@@ -70,11 +88,12 @@ const drawCropMarks = ({
         y + height + offsetPt;
 
 
-    /*
+    /**
+     * --------------------------------------------------------
      * BOTTOM LEFT
+     * --------------------------------------------------------
      */
 
-    // Horizontal
     page.drawLine({
         start: {
             x: left - lengthPt,
@@ -87,7 +106,6 @@ const drawCropMarks = ({
         thickness
     });
 
-    // Vertical
     page.drawLine({
         start: {
             x: left,
@@ -101,11 +119,12 @@ const drawCropMarks = ({
     });
 
 
-    /*
+    /**
+     * --------------------------------------------------------
      * BOTTOM RIGHT
+     * --------------------------------------------------------
      */
 
-    // Horizontal
     page.drawLine({
         start: {
             x: right,
@@ -118,7 +137,6 @@ const drawCropMarks = ({
         thickness
     });
 
-    // Vertical
     page.drawLine({
         start: {
             x: right,
@@ -132,11 +150,12 @@ const drawCropMarks = ({
     });
 
 
-    /*
+    /**
+     * --------------------------------------------------------
      * TOP LEFT
+     * --------------------------------------------------------
      */
 
-    // Horizontal
     page.drawLine({
         start: {
             x: left - lengthPt,
@@ -149,7 +168,6 @@ const drawCropMarks = ({
         thickness
     });
 
-    // Vertical
     page.drawLine({
         start: {
             x: left,
@@ -163,11 +181,12 @@ const drawCropMarks = ({
     });
 
 
-    /*
+    /**
+     * --------------------------------------------------------
      * TOP RIGHT
+     * --------------------------------------------------------
      */
 
-    // Horizontal
     page.drawLine({
         start: {
             x: right,
@@ -180,7 +199,6 @@ const drawCropMarks = ({
         thickness
     });
 
-    // Vertical
     page.drawLine({
         start: {
             x: right,
@@ -196,8 +214,11 @@ const drawCropMarks = ({
 
 
 /**
- * Draw registration mark
+ * ============================================================
+ * REGISTRATION MARK
+ * ============================================================
  */
+
 const drawRegistrationMark = ({
     page,
     x,
@@ -242,11 +263,11 @@ const drawRegistrationMark = ({
 
 
 /**
- * Draw color bar
- *
- * This is a basic CMYK-style production bar.
- * Later we can make it configurable and Preps-like.
+ * ============================================================
+ * COLOR BAR
+ * ============================================================
  */
+
 const drawColorBar = ({
     page,
     x,
@@ -256,10 +277,15 @@ const drawColorBar = ({
 }) => {
 
     const colors = [
-        rgb(0, 1, 1), // Cyan
-        rgb(1, 0, 1), // Magenta
-        rgb(1, 1, 0), // Yellow
-        rgb(0, 0, 0)  // Black
+
+        rgb(0, 1, 1),       // Cyan
+
+        rgb(1, 0, 1),       // Magenta
+
+        rgb(1, 1, 0),       // Yellow
+
+        rgb(0, 0, 0)        // Black
+
     ];
 
 
@@ -271,10 +297,11 @@ const drawColorBar = ({
         (color, index) => {
 
             page.drawRectangle({
+
                 x:
                     x +
                     index *
-                        cellWidth,
+                    cellWidth,
 
                 y,
 
@@ -292,8 +319,11 @@ const drawColorBar = ({
 
 
 /**
- * Draw job information
+ * ============================================================
+ * JOB INFORMATION
+ * ============================================================
  */
+
 const drawJobInfo = ({
     page,
     text,
@@ -324,37 +354,96 @@ const drawJobInfo = ({
 
 
 /**
- * Draw all production marks
+ * ============================================================
+ * PRODUCTION MARKS
+ * ============================================================
+ *
+ * Compatible with Phase 5 config:
+ *
+ * marks:
+ * {
+ *     enabled: true,
+ *     crop: true,
+ *     registration: true,
+ *     colorBar: true,
+ *     jobInfo: false
+ * }
+ *
+ * cropMarks:
+ * {
+ *     enabled: true,
+ *     length: 3,
+ *     offset: 2,
+ *     unit: "mm"
+ * }
  */
+
 const drawProductionMarks = ({
     page,
     placements = [],
     marks = {},
+    cropMarks = {},
     jobInfo = null,
     font = null
 }) => {
 
-    /*
-     * Marks disabled
+    /**
+     * --------------------------------------------------------
+     * NORMALIZE OBJECTS
+     * --------------------------------------------------------
+     *
+     * Prevent:
+     *
+     * Cannot read properties of undefined
+     *
+     * when optional configuration is missing.
      */
+
+    const normalizedMarks =
+        marks || {};
+
+    const normalizedCropMarks =
+        cropMarks || {};
+
+
+    /**
+     * --------------------------------------------------------
+     * MARKS DISABLED
+     * --------------------------------------------------------
+     */
+
     if (
-        marks.enabled === false
+        normalizedMarks.enabled === false
     ) {
         return;
     }
 
 
-    /*
+    /**
+     * --------------------------------------------------------
      * CROP MARKS
+     * --------------------------------------------------------
      */
+
+    const cropMarksEnabled =
+        normalizedCropMarks.enabled !== false &&
+        normalizedMarks.crop !== false;
+
+
     if (
-        marks.crop
+        cropMarksEnabled
     ) {
 
         placements.forEach(
             (placement) => {
 
+                if (!placement) {
+                    return;
+                }
+
+
                 drawCropMarks({
+
                     page,
 
                     x:
@@ -370,15 +459,15 @@ const drawProductionMarks = ({
                         placement.height,
 
                     length:
-                        marks.cropMarkLength ??
+                        normalizedCropMarks.length ??
                         3,
 
                     offset:
-                        marks.cropMarkOffset ??
+                        normalizedCropMarks.offset ??
                         2,
 
                     unit:
-                        marks.unit ??
+                        normalizedCropMarks.unit ??
                         "mm"
                 });
 
@@ -387,9 +476,12 @@ const drawProductionMarks = ({
     }
 
 
-    /*
-     * No placements
+    /**
+     * --------------------------------------------------------
+     * NO PLACEMENTS
+     * --------------------------------------------------------
      */
+
     if (
         placements.length === 0
     ) {
@@ -397,21 +489,33 @@ const drawProductionMarks = ({
     }
 
 
-    /*
-     * First placement
+    /**
+     * --------------------------------------------------------
+     * FIRST PLACEMENT
+     * --------------------------------------------------------
      */
+
     const first =
         placements[0];
 
 
-    /*
+    if (!first) {
+        return;
+    }
+
+
+    /**
+     * --------------------------------------------------------
      * REGISTRATION MARK
+     * --------------------------------------------------------
      */
+
     if (
-        marks.registration
+        normalizedMarks.registration === true
     ) {
 
         drawRegistrationMark({
+
             page,
 
             x:
@@ -421,18 +525,21 @@ const drawProductionMarks = ({
                 first.y +
                 first.height / 2
         });
-
     }
 
 
-    /*
+    /**
+     * --------------------------------------------------------
      * COLOR BAR
+     * --------------------------------------------------------
      */
+
     if (
-        marks.colorBar
+        normalizedMarks.colorBar === true
     ) {
 
         drawColorBar({
+
             page,
 
             x:
@@ -441,20 +548,23 @@ const drawProductionMarks = ({
             y:
                 first.y - 30
         });
-
     }
 
 
-    /*
+    /**
+     * --------------------------------------------------------
      * JOB INFORMATION
+     * --------------------------------------------------------
      */
+
     if (
-        marks.jobInfo &&
+        normalizedMarks.jobInfo === true &&
         jobInfo &&
         font
     ) {
 
         drawJobInfo({
+
             page,
 
             text:
@@ -466,10 +576,15 @@ const drawProductionMarks = ({
 
             font
         });
-
     }
 };
 
+
+/**
+ * ============================================================
+ * EXPORTS
+ * ============================================================
+ */
 
 export {
     toPoints,
