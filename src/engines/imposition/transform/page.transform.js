@@ -1,3 +1,231 @@
+// import { degrees } from "pdf-lib";
+
+
+// const normalizeRotation = (rotation = 0) => {
+//     const value = Number(rotation);
+
+//     if (![0, 90, 180, 270].includes(value)) {
+//         throw new Error(
+//             `Unsupported page rotation: ${rotation}`
+//         );
+//     }
+
+//     return value;
+// };
+
+
+// /**
+//  * Draw an embedded PDF page into its assigned placement.
+//  *
+//  * Uses the public PDFPage.drawPage() API.
+//  * Do NOT use the low-level pdf-lib drawPage operator here.
+//  */
+// const drawPlacedPage = ({
+//     outputPage,
+//     embeddedPage,
+//     placement
+// }) => {
+
+//     if (!outputPage) {
+//         throw new Error("drawPlacedPage: outputPage is required.");
+//     }
+
+//     if (!embeddedPage) {
+//         throw new Error("drawPlacedPage: embeddedPage is required.");
+//     }
+
+//     if (!placement) {
+//         throw new Error("drawPlacedPage: placement is required.");
+//     }
+
+//     const rotation = normalizeRotation(placement.rotation);
+
+//     const sourceWidth = Number(embeddedPage.width);
+//     const sourceHeight = Number(embeddedPage.height);
+
+//     if (!Number.isFinite(sourceWidth) || sourceWidth <= 0) {
+//         throw new Error(
+//             `Invalid embedded page width: ${embeddedPage.width}`
+//         );
+//     }
+
+//     if (!Number.isFinite(sourceHeight) || sourceHeight <= 0) {
+//         throw new Error(
+//             `Invalid embedded page height: ${embeddedPage.height}`
+//         );
+//     }
+
+//     const targetWidth = Number(placement.width);
+//     const targetHeight = Number(placement.height);
+
+//     if (!Number.isFinite(targetWidth) || targetWidth <= 0) {
+//         throw new Error(
+//             `Invalid placement width: ${placement.width}`
+//         );
+//     }
+
+//     if (!Number.isFinite(targetHeight) || targetHeight <= 0) {
+//         throw new Error(
+//             `Invalid placement height: ${placement.height}`
+//         );
+//     }
+
+//     const xScale = targetWidth / sourceWidth;
+//     const yScale = targetHeight / sourceHeight;
+
+
+//     /*
+//      * Rotation positioning
+//      *
+//      * For 0°:
+//      *   placement.x / placement.y are the lower-left coordinates.
+//      *
+//      * For 180°:
+//      *   compensate for rotation around the lower-left origin.
+//      *
+//      * For 90° / 270°:
+//      *   compensate for the rotated bounding box.
+//      */
+
+//     let x = placement.x;
+//     let y = placement.y;
+
+//     if (rotation === 180) {
+
+//         x = placement.x + targetWidth;
+//         y = placement.y + targetHeight;
+
+//     } else if (rotation === 90) {
+
+//         x = placement.x + targetWidth;
+//         y = placement.y;
+
+//     } else if (rotation === 270) {
+
+//         x = placement.x;
+//         y = placement.y + targetHeight;
+//     }
+// console.log("========== DRAW PLACED PAGE ==========");
+// console.log({
+//     pageNumber: placement.pageNumber,
+//     rotation,
+//     placementX: placement.x,
+//     placementY: placement.y,
+//     placementWidth: placement.width,
+//     placementHeight: placement.height,
+//     drawX: x,
+//     drawY: y,
+//     xScale,
+//     yScale
+// });
+// console.log("======================================");
+
+//     outputPage.drawPage(
+//         embeddedPage,
+//         {
+//             x,
+//             y,
+//             xScale,
+//             yScale,
+//             rotate: degrees(rotation)
+//         }
+//     );
+// };
+
+
+// /**
+//  * Apply work style to the back side.
+//  */
+// const applyWorkStyle = ({
+//     placements,
+//     sheetWidth,
+//     sheetHeight,
+//     workStyle
+// }) => {
+
+//     if (!Array.isArray(placements)) {
+//         throw new Error(
+//             "applyWorkStyle: placements must be an array."
+//         );
+//     }
+
+//     const type =
+//         typeof workStyle === "string"
+//             ? workStyle
+//             : workStyle?.type || "SHEETWISE";
+
+
+//     switch (type) {
+
+//         case "SHEETWISE":
+
+//             return placements.map((placement) => ({
+//                 ...placement
+//             }));
+
+
+//         case "WORK_AND_TURN":
+
+//             return placements.map((placement) => ({
+//                 ...placement,
+
+//                 x:
+//                     sheetWidth -
+//                     placement.x -
+//                     placement.width,
+
+//                 rotation:
+//                     (placement.rotation + 180) % 360
+//             }));
+
+
+//         case "WORK_AND_TUMBLE":
+
+//             return placements.map((placement) => ({
+//                 ...placement,
+
+//                 y:
+//                     sheetHeight -
+//                     placement.y -
+//                     placement.height,
+
+//                 rotation:
+//                     (placement.rotation + 180) % 360
+//             }));
+
+
+//         case "PERFECTOR":
+
+//             return placements.map((placement) => ({
+//                 ...placement,
+
+//                 rotation:
+//                     (placement.rotation + 180) % 360
+//             }));
+
+
+//         case "SINGLE_SIDED":
+
+//             return placements.map((placement) => ({
+//                 ...placement
+//             }));
+
+
+//         default:
+
+//             throw new Error(
+//                 `Unsupported work style: ${type}`
+//             );
+//     }
+// };
+
+
+// export {
+//     drawPlacedPage,
+//     applyWorkStyle
+// };
+
+
 import { degrees } from "pdf-lib";
 
 
@@ -14,12 +242,6 @@ const normalizeRotation = (rotation = 0) => {
 };
 
 
-/**
- * Draw an embedded PDF page into its assigned placement.
- *
- * Uses the public PDFPage.drawPage() API.
- * Do NOT use the low-level pdf-lib drawPage operator here.
- */
 const drawPlacedPage = ({
     outputPage,
     embeddedPage,
@@ -27,83 +249,135 @@ const drawPlacedPage = ({
 }) => {
 
     if (!outputPage) {
-        throw new Error("drawPlacedPage: outputPage is required.");
+        throw new Error(
+            "drawPlacedPage: outputPage is required."
+        );
     }
 
     if (!embeddedPage) {
-        throw new Error("drawPlacedPage: embeddedPage is required.");
+        throw new Error(
+            "drawPlacedPage: embeddedPage is required."
+        );
     }
 
     if (!placement) {
-        throw new Error("drawPlacedPage: placement is required.");
-    }
-
-    const rotation = normalizeRotation(placement.rotation);
-
-    const sourceWidth = Number(embeddedPage.width);
-    const sourceHeight = Number(embeddedPage.height);
-
-    if (!Number.isFinite(sourceWidth) || sourceWidth <= 0) {
         throw new Error(
-            `Invalid embedded page width: ${embeddedPage.width}`
+            "drawPlacedPage: placement is required."
         );
     }
 
-    if (!Number.isFinite(sourceHeight) || sourceHeight <= 0) {
+
+    const rotation =
+        normalizeRotation(
+            placement.rotation
+        );
+
+
+    const sourceWidth =
+        Number(embeddedPage.width);
+
+    const sourceHeight =
+        Number(embeddedPage.height);
+
+
+    const targetWidth =
+        Number(placement.width);
+
+    const targetHeight =
+        Number(placement.height);
+
+
+    if (
+        !Number.isFinite(sourceWidth) ||
+        sourceWidth <= 0
+    ) {
         throw new Error(
-            `Invalid embedded page height: ${embeddedPage.height}`
+            `Invalid embedded page width: ${sourceWidth}`
         );
     }
 
-    const targetWidth = Number(placement.width);
-    const targetHeight = Number(placement.height);
 
-    if (!Number.isFinite(targetWidth) || targetWidth <= 0) {
+    if (
+        !Number.isFinite(sourceHeight) ||
+        sourceHeight <= 0
+    ) {
         throw new Error(
-            `Invalid placement width: ${placement.width}`
+            `Invalid embedded page height: ${sourceHeight}`
         );
     }
 
-    if (!Number.isFinite(targetHeight) || targetHeight <= 0) {
+
+    if (
+        !Number.isFinite(targetWidth) ||
+        targetWidth <= 0
+    ) {
         throw new Error(
-            `Invalid placement height: ${placement.height}`
+            `Invalid placement width: ${targetWidth}`
         );
     }
 
-    const xScale = targetWidth / sourceWidth;
-    const yScale = targetHeight / sourceHeight;
+
+    if (
+        !Number.isFinite(targetHeight) ||
+        targetHeight <= 0
+    ) {
+        throw new Error(
+            `Invalid placement height: ${targetHeight}`
+        );
+    }
 
 
     /*
-     * Rotation positioning
-     *
-     * For 0°:
-     *   placement.x / placement.y are the lower-left coordinates.
-     *
-     * For 180°:
-     *   compensate for rotation around the lower-left origin.
-     *
-     * For 90° / 270°:
-     *   compensate for the rotated bounding box.
+     * Scale source PDF page to target placement.
      */
 
-    let x = placement.x;
-    let y = placement.y;
+    const xScale =
+        targetWidth / sourceWidth;
 
-    if (rotation === 180) {
+    const yScale =
+        targetHeight / sourceHeight;
 
-        x = placement.x + targetWidth;
-        y = placement.y + targetHeight;
 
-    } else if (rotation === 90) {
+    /*
+     * pdf-lib drawPage() rotates around
+     * the supplied x/y origin.
+     *
+     * Therefore we compensate the origin
+     * according to the requested rotation.
+     */
 
-        x = placement.x + targetWidth;
-        y = placement.y;
+    let x = Number(placement.x);
+    let y = Number(placement.y);
 
-    } else if (rotation === 270) {
 
-        x = placement.x;
-        y = placement.y + targetHeight;
+    switch (rotation) {
+
+        case 0:
+
+            break;
+
+
+        case 90:
+
+            x += targetWidth;
+
+            break;
+
+
+        case 180:
+
+            x += targetWidth;
+            y += targetHeight;
+
+            break;
+
+
+        case 270:
+
+            y += targetHeight;
+
+            break;
+
     }
 
 
@@ -120,9 +394,6 @@ const drawPlacedPage = ({
 };
 
 
-/**
- * Apply work style to the back side.
- */
 const applyWorkStyle = ({
     placements,
     sheetWidth,
@@ -136,66 +407,87 @@ const applyWorkStyle = ({
         );
     }
 
+
     const type =
         typeof workStyle === "string"
             ? workStyle
-            : workStyle?.type || "SHEETWISE";
+            : workStyle?.type ||
+              "SHEETWISE";
 
 
     switch (type) {
 
         case "SHEETWISE":
 
-            return placements.map((placement) => ({
-                ...placement
-            }));
+            return placements.map(
+                placement => ({
+                    ...placement
+                })
+            );
 
 
         case "WORK_AND_TURN":
 
-            return placements.map((placement) => ({
-                ...placement,
+            return placements.map(
+                placement => ({
+                    ...placement,
 
-                x:
-                    sheetWidth -
-                    placement.x -
-                    placement.width,
+                    x:
+                        sheetWidth -
+                        placement.x -
+                        placement.width,
 
-                rotation:
-                    (placement.rotation + 180) % 360
-            }));
+                    rotation:
+                        (
+                            placement.rotation +
+                            180
+                        ) % 360
+                })
+            );
 
 
         case "WORK_AND_TUMBLE":
 
-            return placements.map((placement) => ({
-                ...placement,
+            return placements.map(
+                placement => ({
+                    ...placement,
 
-                y:
-                    sheetHeight -
-                    placement.y -
-                    placement.height,
+                    y:
+                        sheetHeight -
+                        placement.y -
+                        placement.height,
 
-                rotation:
-                    (placement.rotation + 180) % 360
-            }));
+                    rotation:
+                        (
+                            placement.rotation +
+                            180
+                        ) % 360
+                })
+            );
 
 
         case "PERFECTOR":
 
-            return placements.map((placement) => ({
-                ...placement,
+            return placements.map(
+                placement => ({
+                    ...placement,
 
-                rotation:
-                    (placement.rotation + 180) % 360
-            }));
+                    rotation:
+                        (
+                            placement.rotation +
+                            180
+                        ) % 360
+                })
+            );
 
 
         case "SINGLE_SIDED":
 
-            return placements.map((placement) => ({
-                ...placement
-            }));
+            return placements.map(
+                placement => ({
+                    ...placement
+                })
+            );
 
 
         default:
@@ -203,6 +495,7 @@ const applyWorkStyle = ({
             throw new Error(
                 `Unsupported work style: ${type}`
             );
+
     }
 };
 

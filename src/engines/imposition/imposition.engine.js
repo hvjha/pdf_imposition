@@ -1586,7 +1586,15 @@ const buildLayoutSide = ({
                 geometry
 
             });
-
+console.log("PLACEMENT:", {
+    sourcePageNumber,
+    localPageNumber,
+    row: Number(entry.row),
+    column: Number(entry.column),
+    x: position.x,
+    y: position.y,
+    rotation: normalizeRotation(entry.rotation ?? 0)
+});
 
         placements.push({
 
@@ -2404,6 +2412,14 @@ const imposePdf = async ({
                 layoutConfig.mode
 
         });
+        console.log("========== RESOLVED FOLD PATTERN ==========");
+console.log("Pattern ID:", pattern.id);
+console.log("Pattern Mode:", pattern.mode);
+console.log("Columns:", pattern.columns);
+console.log("Rows:", pattern.rows);
+console.log("Front:", JSON.stringify(pattern.front, null, 2));
+console.log("Back:", JSON.stringify(pattern.back, null, 2));
+console.log("===========================================");
 
 
     if (

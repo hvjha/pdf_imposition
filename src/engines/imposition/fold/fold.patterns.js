@@ -512,6 +512,8 @@ const PATTERN_4PP_TEXT_TEST = {
     columns: 2,
     rows: 2,
 
+    physicalMappingConfirmed: true,
+
     front: [
         {
             pageNumber: 3,
