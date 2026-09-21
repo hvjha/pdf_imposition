@@ -21,13 +21,29 @@ const validateCropRectangle = (
     }
 
     if (
-        typeof crop.x !== "number" ||
-        typeof crop.y !== "number" ||
-        typeof crop.width !== "number" ||
-        typeof crop.height !== "number"
+        !Number.isFinite(crop.x) ||
+        !Number.isFinite(crop.y) ||
+        !Number.isFinite(crop.width) ||
+        !Number.isFinite(crop.height)
     ) {
         errors.push(
-            "Crop x, y, width and height must be numbers."
+            "Crop x, y, width and height must be finite numbers."
+        );
+
+        return {
+            valid: false,
+            errors
+        };
+    }
+
+    if (
+        !Number.isFinite(sourceWidth) ||
+        !Number.isFinite(sourceHeight) ||
+        sourceWidth <= 0 ||
+        sourceHeight <= 0
+    ) {
+        errors.push(
+            "Source page dimensions must be valid positive numbers."
         );
 
         return {
@@ -48,12 +64,16 @@ const validateCropRectangle = (
         );
     }
 
-    if (crop.x < 0) {
-        errors.push("Crop X cannot be negative.");
+    if (crop.x < -EPSILON) {
+        errors.push(
+            "Crop X cannot be negative."
+        );
     }
 
-    if (crop.y < 0) {
-        errors.push("Crop Y cannot be negative.");
+    if (crop.y < -EPSILON) {
+        errors.push(
+            "Crop Y cannot be negative."
+        );
     }
 
     if (
@@ -88,14 +108,8 @@ const isFullPageCrop = (
     return (
         approximatelyEqual(crop.x, 0) &&
         approximatelyEqual(crop.y, 0) &&
-        approximatelyEqual(
-            crop.width,
-            sourceWidth
-        ) &&
-        approximatelyEqual(
-            crop.height,
-            sourceHeight
-        )
+        approximatelyEqual(crop.width, sourceWidth) &&
+        approximatelyEqual(crop.height, sourceHeight)
     );
 };
 

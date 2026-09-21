@@ -1,6 +1,8 @@
 const POINTS_PER_INCH = 72;
+const MM_PER_INCH = 25.4;
+const POINTS_PER_MM = POINTS_PER_INCH / MM_PER_INCH;
 
-const SUPPORTED_UNITS = ["pt", "inch"];
+const SUPPORTED_UNITS = ["pt", "inch", "mm"];
 
 const toPoints = (value, unit = "pt") => {
     if (
@@ -12,15 +14,17 @@ const toPoints = (value, unit = "pt") => {
         );
     }
 
-    if (!SUPPORTED_UNITS.includes(unit)) {
+    const normalizedUnit = String(unit).trim().toLowerCase();
+
+    if (!SUPPORTED_UNITS.includes(normalizedUnit)) {
         throw new Error(
-            `Unsupported unit: ${unit}. Use "pt" or "inch".`
+            `Unsupported unit: ${unit}. Use "pt", "mm" or "inch".`
         );
     }
 
-    return unit === "inch"
-        ? value * POINTS_PER_INCH
-        : value;
+    if (normalizedUnit === "inch") return value * POINTS_PER_INCH;
+    if (normalizedUnit === "mm") return value * POINTS_PER_MM;
+    return value;
 };
 
 const toInches = (points) => {
@@ -28,7 +32,9 @@ const toInches = (points) => {
         typeof points !== "number" ||
         !Number.isFinite(points)
     ) {
-        throw new Error("Invalid point value.");
+        throw new Error(
+            "Invalid point value."
+        );
     }
 
     return Number(

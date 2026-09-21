@@ -9,6 +9,7 @@
  *
  *   2PP
  *   4PP
+ *   8PP
  *
  * Dynamic:
  *
@@ -1586,16 +1587,6 @@ const buildLayoutSide = ({
                 geometry
 
             });
-console.log("PLACEMENT:", {
-    sourcePageNumber,
-    localPageNumber,
-    row: Number(entry.row),
-    column: Number(entry.column),
-    x: position.x,
-    y: position.y,
-    rotation: normalizeRotation(entry.rotation ?? 0)
-});
-
         placements.push({
 
             pageNumber:
@@ -2193,13 +2184,15 @@ const drawLayoutSide = async ({
  * CREATE OUTPUT PDF
  * ============================================================
  *
- * ONE physical layout = ONE output PDF page.
+ * Each physical layout side = ONE output PDF page.
  *
  * Therefore:
  *
  * 36 pages / 2PP = 18 output pages.
  *
  * 36 pages / 4PP = 9 output pages.
+ *
+ * An 8PP duplex layout produces a FRONT and BACK page.
  *
  * ============================================================
  */
@@ -2224,30 +2217,24 @@ const createOutputPdf = async ({
     ) {
 
         /*
-         * Create ONE physical sheet.
-         */
-
-        const outputPage =
-            outputPdf.addPage([
-
-                sheet.width,
-
-                sheet.height
-
-            ]);
-
-
-        /*
-         * Draw FRONT and/or BACK.
-         *
-         * For a single-sided pattern there will normally
-         * only be FRONT.
+         * A duplex sheet has one output PDF page for each side.
+         * Keeping the sides separate prevents the back from being
+         * drawn over the front while retaining single-sided layouts.
          */
 
         for (
             const side
             of layout.sides
         ) {
+
+            const outputPage =
+                outputPdf.addPage([
+
+                    sheet.width,
+
+                    sheet.height
+
+                ]);
 
             await drawLayoutSide({
 
@@ -2412,16 +2399,6 @@ const imposePdf = async ({
                 layoutConfig.mode
 
         });
-        console.log("========== RESOLVED FOLD PATTERN ==========");
-console.log("Pattern ID:", pattern.id);
-console.log("Pattern Mode:", pattern.mode);
-console.log("Columns:", pattern.columns);
-console.log("Rows:", pattern.rows);
-console.log("Front:", JSON.stringify(pattern.front, null, 2));
-console.log("Back:", JSON.stringify(pattern.back, null, 2));
-console.log("===========================================");
-
-
     if (
         !pattern
     ) {
