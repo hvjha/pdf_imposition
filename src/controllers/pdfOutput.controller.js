@@ -145,19 +145,67 @@ const getOutputPdf = async (req, res) => {
 
 
         return res.status(500).json({
-
             success: false,
-
-            message:
-                "Failed to retrieve output PDF.",
-
-            error:
-                error.message
+            message: "Failed to retrieve output PDF.",
+            error: error.message
         });
     }
 };
 
+const getSourcePdf = async (req, res) => {
+    try {
+        const { jobId } = req.params;
+        if (!mongoose.Types.ObjectId.isValid(jobId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid job ID."
+            });
+        }
+
+        const job = await ProductionJob.findById(jobId);
+        if (!job) {
+            return res.status(404).json({
+                success: false,
+                message: "Production job not found."
+            });
+        }
+
+        // Use cropped output if available, otherwise original uploaded file
+        const targetFileId = job.productionConfig?.crop?.outputFileId || job.fileId;
+        if (!targetFileId) {
+            return res.status(404).json({
+                success: false,
+                message: "PDF file not found for this job."
+            });
+        }
+
+        const pdfBuffer = await downloadFileFromGridFS(targetFileId);
+        if (!pdfBuffer || !Buffer.isBuffer(pdfBuffer) || pdfBuffer.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "PDF content is empty or not found."
+            });
+        }
+
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Length", pdfBuffer.length);
+        res.setHeader(
+            "Content-Disposition",
+            `inline; filename="${job.originalFileName}"`
+        );
+
+        return res.send(pdfBuffer);
+    } catch (error) {
+        console.error("[SOURCE PDF] Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to retrieve source PDF.",
+            error: error.message
+        });
+    }
+};
 
 export {
-    getOutputPdf
+    getOutputPdf,
+    getSourcePdf
 };

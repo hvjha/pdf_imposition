@@ -16,6 +16,11 @@ app.use(cors());
 
 app.use((req, res, next) => {
 
+    // Skip logging for health check pings to keep console clean
+    if (req.originalUrl === "/api/health") {
+        return next();
+    }
+
     console.log(
         "\n[REQUEST]",
         req.method,
@@ -84,19 +89,19 @@ app.use(
 // Health
 // --------------------------------------------------
 
-// app.get(
-//     "/api/health",
-//     (req, res) => {
+app.get(
+    "/api/health",
+    (req, res) => {
 
-//         return res.status(200).json({
+        return res.status(200).json({
 
-//             success: true,
+            success: true,
 
-//             message:
-//                 "Welcome to the application."
-//         });
-//     }
-// );
+            message:
+                "Prepress Studio backend is online."
+        });
+    }
+);
 
 
 // --------------------------------------------------

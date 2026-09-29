@@ -105,9 +105,10 @@ const imposePdf = async (
         // Download Source PDF From GridFS
         // -------------------------------------------------
 
+        const sourceFileId = job.productionConfig?.crop?.outputFileId || job.fileId;
         const inputBuffer =
             await downloadFileFromGridFS(
-                job.fileId
+                sourceFileId
             );
 
 

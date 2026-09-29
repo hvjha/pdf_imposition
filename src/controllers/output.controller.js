@@ -70,7 +70,7 @@ const downloadOutputPdf = async (req, res) => {
 
         res.setHeader(
             "Content-Disposition",
-            'attachment; filename="imposed-output.pdf"'
+            'inline; filename="imposed-output.pdf"'
         );
 
         res.setHeader(
