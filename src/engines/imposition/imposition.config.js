@@ -395,7 +395,11 @@ const SUPPORTED_WORK_STYLES = [
 
     "PERFECTOR",
 
-    "SINGLE_SIDED"
+    "SINGLE_SIDED",
+
+    "SIMPLEX",
+
+    "DUPLEX"
 ];
 
 

@@ -86,7 +86,9 @@ const SUPPORTED_WORK_STYLES = [
     "WORK_AND_TURN",
     "WORK_AND_TUMBLE",
     "PERFECTOR",
-    "SINGLE_SIDED"
+    "SINGLE_SIDED",
+    "SIMPLEX",
+    "DUPLEX"
 ];
 
 
@@ -271,14 +273,18 @@ const normalizeGutter = (
         horizontal:
             numberOrDefault(
                 source.horizontal ??
-                source.x,
+                source.x ??
+                source.gutterX ??
+                config.grid?.gutterX,
                 0
             ),
 
         vertical:
             numberOrDefault(
                 source.vertical ??
-                source.y,
+                source.y ??
+                source.gutterY ??
+                config.grid?.gutterY,
                 0
             )
 
@@ -429,6 +435,7 @@ const normalizeFitMode = (
 
     const fitMode =
         String(
+            config.fit?.mode ??
             config.fitMode ??
             "SCALE_TO_FIT"
         )
@@ -470,10 +477,13 @@ const normalizeWorkStyle = (
         typeof source === "string"
     ) {
 
-        const type =
+        let type =
             source
                 .trim()
                 .toUpperCase();
+
+        if (type === "SIMPLEX") type = "SINGLE_SIDED";
+        if (type === "DUPLEX") type = "SHEETWISE";
 
 
         if (
@@ -496,13 +506,16 @@ const normalizeWorkStyle = (
     }
 
 
-    const type =
+    let type =
         String(
             source.type ??
             "SHEETWISE"
         )
             .trim()
             .toUpperCase();
+
+    if (type === "SIMPLEX") type = "SINGLE_SIDED";
+    if (type === "DUPLEX") type = "SHEETWISE";
 
 
     if (
@@ -675,7 +688,10 @@ const normalizeLayout = (
     const pagesPerLayout =
         Number(
             source.pagesPerLayout ??
-            source.pageCount
+            source.pageCount ??
+            ((config.grid?.columns && config.grid?.rows)
+                ? (Number(config.grid.columns) * Number(config.grid.rows))
+                : 1)
         );
 
 

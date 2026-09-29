@@ -142,9 +142,19 @@ const determineCropRectangle = ({
             );
         }
 
-        return normalizeCropRectangle(
+        const rect = normalizeCropRectangle(
             rule.rectangle
         );
+
+        if (rule.clamp !== false) {
+            const src = getSourceDimensions(pageAnalysis);
+            rect.x = Math.max(0, Math.min(rect.x, src.width));
+            rect.y = Math.max(0, Math.min(rect.y, src.height));
+            rect.width = Math.min(rect.width, Math.max(1, src.width - rect.x));
+            rect.height = Math.min(rect.height, Math.max(1, src.height - rect.y));
+        }
+
+        return rect;
     }
 
 
@@ -158,7 +168,11 @@ const determineCropRectangle = ({
         TRIM_BOX: "trim",
         BLEED_BOX: "bleed",
         CROP_BOX: "crop",
-        MEDIA_BOX: "media"
+        MEDIA_BOX: "media",
+        TRIM_BOX_PLUS_BLEED: "trim",
+        MEDIA_BOX_MINUS_BLEED: "media",
+        MANUAL_CROPBOX: "crop",
+        AUTO_DETECT: "trim"
     };
 
     const boxName =
@@ -176,10 +190,14 @@ const determineCropRectangle = ({
             boxName
         );
 
-    if (!box) {
-        throw new Error(
-            `${boxName} box is not available in PDF analysis.`
-        );
+    if (!box || !box.width || !box.height) {
+        const src = getSourceDimensions(pageAnalysis);
+        return {
+            x: 0,
+            y: 0,
+            width: src.width,
+            height: src.height
+        };
     }
 
     return {

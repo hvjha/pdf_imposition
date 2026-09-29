@@ -84,19 +84,19 @@ app.use(
 // Health
 // --------------------------------------------------
 
-app.get(
-    "/api/health",
-    (req, res) => {
+// app.get(
+//     "/api/health",
+//     (req, res) => {
 
-        return res.status(200).json({
+//         return res.status(200).json({
 
-            success: true,
+//             success: true,
 
-            message:
-                "Welcome to the application."
-        });
-    }
-);
+//             message:
+//                 "Welcome to the application."
+//         });
+//     }
+// );
 
 
 // --------------------------------------------------
