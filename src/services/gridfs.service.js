@@ -62,8 +62,18 @@ const initializeGridFS = () => {
         );
 
 
+    // Ensure essential GridFS indexes to prevent 32MB in-memory sort limit errors on large files
+    db.collection("pdfFiles.chunks")
+        .createIndex({ files_id: 1, n: 1 }, { unique: true, background: true })
+        .catch(err => console.warn("[GRIDFS] Error ensuring chunks index:", err.message));
+
+    db.collection("pdfFiles.files")
+        .createIndex({ filename: 1, uploadDate: 1 }, { background: true })
+        .catch(err => console.warn("[GRIDFS] Error ensuring files index:", err.message));
+
+
     console.log(
-        "[GRIDFS] Initialized. Bucket: pdfFiles"
+        "[GRIDFS] Initialized. Bucket: pdfFiles (Indexes verified)"
     );
 
 

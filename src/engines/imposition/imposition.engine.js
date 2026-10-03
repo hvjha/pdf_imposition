@@ -391,13 +391,32 @@ const normalizeSheet = (
         );
 
 
+    const sheetOrientation = String(
+        source.orientation ??
+        config.sheetOrientation ??
+        ""
+    ).toUpperCase();
+
+    let finalWidth = width;
+    let finalHeight = height;
+
+    if (sheetOrientation === "LANDSCAPE" && finalWidth < finalHeight) {
+        finalWidth = height;
+        finalHeight = width;
+    } else if (sheetOrientation === "PORTRAIT" && finalWidth > finalHeight) {
+        finalWidth = height;
+        finalHeight = width;
+    }
+
     const sheet = {
 
-        width,
+        width: finalWidth,
 
-        height,
+        height: finalHeight,
 
-        unit
+        unit,
+
+        orientation: finalWidth >= finalHeight ? "LANDSCAPE" : "PORTRAIT"
 
     };
 
@@ -708,11 +727,35 @@ const normalizeLayout = (
     }
 
 
+    const pageOrientation = String(
+        source.orientation ??
+        source.pageOrientation ??
+        config.pageOrientation ??
+        config.orientation ??
+        "AUTO"
+    ).toUpperCase();
+
+    let pageRotation = Number(
+        source.pageRotation ??
+        config.pageRotation ??
+        0
+    );
+
+    if (!pageRotation && pageOrientation === "LANDSCAPE") {
+        pageRotation = 90;
+    }
+
     return {
 
         ...source,
 
         pagesPerLayout,
+
+        orientation: pageOrientation,
+
+        pageOrientation,
+
+        pageRotation,
 
         patternId:
             source.patternId ??
@@ -1542,7 +1585,8 @@ const buildLayoutSide = ({
     side,
     geometry,
     pageOffset,
-    sourcePageCount
+    sourcePageCount,
+    pageRotation = 0
 }) => {
 
     if (
@@ -1603,6 +1647,10 @@ const buildLayoutSide = ({
                 geometry
 
             });
+
+        const effectiveRotation =
+            ((Number(entry.rotation) || 0) + (Number(pageRotation) || 0)) % 360;
+
         placements.push({
 
             pageNumber:
@@ -1634,8 +1682,7 @@ const buildLayoutSide = ({
 
             rotation:
                 normalizeRotation(
-                    entry.rotation ??
-                    0
+                    effectiveRotation
                 )
 
         });
@@ -1771,7 +1818,8 @@ const buildPhysicalLayout = ({
     pageOffset,
     sourcePageCount,
     sheet,
-    workStyle
+    workStyle,
+    pageRotation = 0
 }) => {
 
     let frontPlacements =
@@ -1785,7 +1833,9 @@ const buildPhysicalLayout = ({
 
             pageOffset,
 
-            sourcePageCount
+            sourcePageCount,
+
+            pageRotation
 
         });
 
@@ -1801,7 +1851,9 @@ const buildPhysicalLayout = ({
 
             pageOffset,
 
-            sourcePageCount
+            sourcePageCount,
+
+            pageRotation
 
         });
 
@@ -1917,7 +1969,8 @@ const buildAllPhysicalLayouts = ({
     sourcePageCount,
     pagesPerLayout,
     sheet,
-    workStyle
+    workStyle,
+    pageRotation = 0
 }) => {
 
     const layoutCount =
@@ -1956,7 +2009,9 @@ const buildAllPhysicalLayouts = ({
 
                 sheet,
 
-                workStyle
+                workStyle,
+
+                pageRotation
 
             });
 
@@ -2494,7 +2549,10 @@ const imposePdf = async ({
 
             sheet,
 
-            workStyle
+            workStyle,
+
+            pageRotation:
+                layoutConfig.pageRotation || 0
 
         });
 

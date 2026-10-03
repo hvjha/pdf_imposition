@@ -4,6 +4,7 @@ import cors from "cors";
 import pdfRoutes from "./routes/pdf.routes.js";
 import impositionRoutes from "./routes/imposition.routes.js";
 import outputRoutes from "./routes/output.routes.js";
+import authRoutes from "./routes/auth.routes.js";
 
 const app = express();
 
@@ -85,6 +86,16 @@ app.use(
     "/api/pdfs/output",
     outputRoutes
 );
+
+// --------------------------------------------------
+// Auth routes
+// --------------------------------------------------
+
+app.use(
+    "/api/auth",
+    authRoutes
+);
+
 // --------------------------------------------------
 // Health
 // --------------------------------------------------
