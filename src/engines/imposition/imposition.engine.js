@@ -202,36 +202,75 @@ const normalizeMargins = (
                 Number(source),
 
             left:
+                Number(source),
+
+            vertical:
+                Number(source),
+
+            horizontal:
                 Number(source)
 
         };
     }
 
+    const verticalFallback =
+        source.vertical ??
+        source.y ??
+        config.verticalMargin ??
+        config.marginVertical ??
+        0;
+
+    const horizontalFallback =
+        source.horizontal ??
+        source.x ??
+        config.horizontalMargin ??
+        config.marginHorizontal ??
+        0;
+
+    const top =
+        numberOrDefault(
+            source.top,
+            verticalFallback
+        );
+
+    const bottom =
+        numberOrDefault(
+            source.bottom,
+            verticalFallback
+        );
+
+    const left =
+        numberOrDefault(
+            source.left,
+            horizontalFallback
+        );
+
+    const right =
+        numberOrDefault(
+            source.right,
+            horizontalFallback
+        );
 
     return {
 
-        top:
+        top,
+
+        right,
+
+        bottom,
+
+        left,
+
+        vertical:
             numberOrDefault(
-                source.top,
-                0
+                source.vertical,
+                (top + bottom) / 2
             ),
 
-        right:
+        horizontal:
             numberOrDefault(
-                source.right,
-                0
-            ),
-
-        bottom:
-            numberOrDefault(
-                source.bottom,
-                0
-            ),
-
-        left:
-            numberOrDefault(
-                source.left,
-                0
+                source.horizontal,
+                (left + right) / 2
             )
 
     };
@@ -440,6 +479,63 @@ const normalizeSheet = (
 
 
     return sheet;
+};
+
+
+/* ============================================================
+ * BOOK SIZE (Finished Trim Size)
+ * ============================================================
+ */
+
+const normalizeBookSize = (
+    config
+) => {
+
+    const source =
+        config.bookSize ??
+        config.book ??
+        config.targetBookSize ??
+        null;
+
+    if (!source || (typeof source !== "object" && typeof source !== "string")) {
+        return null;
+    }
+
+    const unit =
+        source.unit ??
+        "mm";
+
+    const width =
+        source.width
+            ? convertMeasurement(source.width, unit)
+            : null;
+
+    const height =
+        source.height
+            ? convertMeasurement(source.height, unit)
+            : null;
+
+    return {
+
+        width,
+
+        height,
+
+        rawWidth:
+            source.width || null,
+
+        rawHeight:
+            source.height || null,
+
+        unit,
+
+        preset:
+            source.preset || source.name || "CUSTOM",
+
+        isCustom:
+            Boolean(source.isCustom || source.preset === "CUSTOM")
+
+    };
 };
 
 
@@ -787,6 +883,12 @@ const normalizeConfig = (
         );
 
 
+    const bookSize =
+        normalizeBookSize(
+            config
+        );
+
+
     const margins =
         normalizeMargins(
             config
@@ -846,6 +948,8 @@ const normalizeConfig = (
         ...config,
 
         sheet,
+
+        bookSize,
 
         margins,
 
@@ -2669,6 +2773,10 @@ const pdfBuffer =
                 sheet.unit
 
         },
+
+        bookSize:
+            normalizedConfig.bookSize ??
+            null,
 
         geometry,
 
