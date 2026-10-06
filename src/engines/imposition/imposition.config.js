@@ -313,6 +313,9 @@ const DEFAULT_IMPOSITION_CONFIG = {
         colorBar:
             false,
 
+        cameraMarks:
+            false,
+
         jobInfo:
             false
     }
@@ -1194,6 +1197,7 @@ const normalizeImpositionConfig = (
         registration:
             Boolean(
                 marks.registration ??
+                marks.registrationMarks ??
                 DEFAULT_IMPOSITION_CONFIG
                     .marks
                     .registration
@@ -1202,14 +1206,26 @@ const normalizeImpositionConfig = (
         colorBar:
             Boolean(
                 marks.colorBar ??
+                marks.colorBars ??
                 DEFAULT_IMPOSITION_CONFIG
                     .marks
                     .colorBar
             ),
 
+        cameraMarks:
+            Boolean(
+                marks.cameraMarks ??
+                marks.camera ??
+                marks.opticalMarks ??
+                DEFAULT_IMPOSITION_CONFIG
+                    .marks
+                    .cameraMarks
+            ),
+
         jobInfo:
             Boolean(
                 marks.jobInfo ??
+                marks.jobSlug ??
                 DEFAULT_IMPOSITION_CONFIG
                     .marks
                     .jobInfo

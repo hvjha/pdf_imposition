@@ -35,7 +35,8 @@
  */
 
 import {
-    PDFDocument
+    PDFDocument,
+    StandardFonts
 } from "pdf-lib";
 
 
@@ -185,31 +186,23 @@ const normalizeMargins = (
         config.margin ??
         {};
 
+    const unit =
+        source.unit ??
+        config.unit ??
+        "mm";
 
     if (
         typeof source === "number"
     ) {
+        const val = convertMeasurement(Number(source), unit);
 
         return {
-
-            top:
-                Number(source),
-
-            right:
-                Number(source),
-
-            bottom:
-                Number(source),
-
-            left:
-                Number(source),
-
-            vertical:
-                Number(source),
-
-            horizontal:
-                Number(source)
-
+            top: val,
+            right: val,
+            bottom: val,
+            left: val,
+            vertical: val,
+            horizontal: val
         };
     }
 
@@ -227,52 +220,42 @@ const normalizeMargins = (
         config.marginHorizontal ??
         0;
 
-    const top =
+    const rawTop =
         numberOrDefault(
             source.top,
             verticalFallback
         );
 
-    const bottom =
+    const rawBottom =
         numberOrDefault(
             source.bottom,
             verticalFallback
         );
 
-    const left =
+    const rawLeft =
         numberOrDefault(
             source.left,
             horizontalFallback
         );
 
-    const right =
+    const rawRight =
         numberOrDefault(
             source.right,
             horizontalFallback
         );
 
+    const top = convertMeasurement(rawTop, unit);
+    const bottom = convertMeasurement(rawBottom, unit);
+    const left = convertMeasurement(rawLeft, unit);
+    const right = convertMeasurement(rawRight, unit);
+
     return {
-
         top,
-
         right,
-
         bottom,
-
         left,
-
-        vertical:
-            numberOrDefault(
-                source.vertical,
-                (top + bottom) / 2
-            ),
-
-        horizontal:
-            numberOrDefault(
-                source.horizontal,
-                (left + right) / 2
-            )
-
+        vertical: (top + bottom) / 2,
+        horizontal: (left + right) / 2
     };
 };
 
@@ -290,43 +273,43 @@ const normalizeGutter = (
         config.gutter ??
         {};
 
+    const unit =
+        source.unit ??
+        config.unit ??
+        "mm";
 
     if (
         typeof source === "number"
     ) {
+        const val = convertMeasurement(Number(source), unit);
 
         return {
-
-            horizontal:
-                Number(source),
-
-            vertical:
-                Number(source)
-
+            horizontal: val,
+            vertical: val
         };
     }
 
+    const rawH =
+        numberOrDefault(
+            source.horizontal ??
+            source.x ??
+            source.gutterX ??
+            config.grid?.gutterX,
+            0
+        );
+
+    const rawV =
+        numberOrDefault(
+            source.vertical ??
+            source.y ??
+            source.gutterY ??
+            config.grid?.gutterY,
+            0
+        );
 
     return {
-
-        horizontal:
-            numberOrDefault(
-                source.horizontal ??
-                source.x ??
-                source.gutterX ??
-                config.grid?.gutterX,
-                0
-            ),
-
-        vertical:
-            numberOrDefault(
-                source.vertical ??
-                source.y ??
-                source.gutterY ??
-                config.grid?.gutterY,
-                0
-            )
-
+        horizontal: convertMeasurement(rawH, unit),
+        vertical: convertMeasurement(rawV, unit)
     };
 };
 
@@ -774,13 +757,79 @@ const normalizeMarks = (
     config
 ) => {
 
+    const raw =
+        config.marks ??
+        {};
+
     return {
 
-        ...(config.marks ?? {}),
+        ...raw,
+
+        enabled:
+            raw.enabled !== false,
 
         crop:
-            config.marks?.crop ??
-            true
+            Boolean(
+                raw.crop ??
+                config.cropMarks?.enabled ??
+                true
+            ),
+
+        colorBar:
+            Boolean(
+                raw.colorBar ??
+                raw.colorBars ??
+                true
+            ),
+
+        colorBars:
+            Boolean(
+                raw.colorBars ??
+                raw.colorBar ??
+                true
+            ),
+
+        cameraMarks:
+            Boolean(
+                raw.cameraMarks ??
+                raw.camera ??
+                raw.opticalMarks ??
+                true
+            ),
+
+        registration:
+            Boolean(
+                raw.registration ??
+                raw.registrationMarks ??
+                true
+            ),
+
+        registrationMarks:
+            Boolean(
+                raw.registrationMarks ??
+                raw.registration ??
+                true
+            ),
+
+        jobSlug:
+            Boolean(
+                raw.jobSlug ??
+                raw.jobInfo ??
+                true
+            ),
+
+        jobInfo:
+            Boolean(
+                raw.jobInfo ??
+                raw.jobSlug ??
+                true
+            ),
+
+        collatingMarks:
+            Boolean(
+                raw.collatingMarks ??
+                false
+            )
 
     };
 };
@@ -2349,7 +2398,10 @@ const drawLayoutSide = async ({
 
         jobInfo,
 
-        font
+        font,
+
+        sideName:
+            side.name || side.side || ""
 
     });
 };
@@ -2384,6 +2436,15 @@ const createOutputPdf = async ({
 
     const outputPdf =
         await PDFDocument.create();
+
+    let embeddedFont = font;
+    if (!embeddedFont) {
+        try {
+            embeddedFont = await outputPdf.embedFont(StandardFonts.Helvetica);
+        } catch {
+            embeddedFont = null;
+        }
+    }
 
 
     for (
@@ -2427,7 +2488,8 @@ const createOutputPdf = async ({
 
                 jobInfo,
 
-                font
+                font:
+                    embeddedFont
 
             });
         }
