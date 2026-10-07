@@ -257,11 +257,12 @@ const drawColorBars = ({
 
 /**
  * ============================================================
+/**
  * DRAW OPTICAL CAMERA MARKS (Digital Cut & Optical Registration)
  * ============================================================
  * Used by automated camera cutters (Zünd, Kongsberg, i-cut, etc.)
- * High-contrast solid black fiducial dots (5mm dia) with quiet zone
- * and concentric alignment guides.
+ * Clean 5 mm radius circle filled with solid color with an outer border.
+ * No unnecessary craft, ticks, or reticles.
  */
 const drawCameraMarks = ({
     page,
@@ -271,16 +272,17 @@ const drawCameraMarks = ({
     maxX,
     minY,
     maxY,
-    size = 5,
+    radius = 5,
+    size,
     offset = 8,
     style = "RING",
     positions = "CORNERS_AND_EDGES"
 }) => {
-    const diameterMM = Number(size) || 5;
-    const offsetMM = Number(offset) || 8;
-    const dotRadius = toPoints(diameterMM / 2, "mm");
-    const guideRadius = dotRadius * 1.8;
-    const quietZone = dotRadius * 2.3;
+    // 5 mm radius circle filled with color with an outer border
+    const radiusMM = Number(radius) || (Number(size) ? (Number(size) <= 6 ? Number(size) : Number(size) / 2) : 5) || 5;
+    const offsetMM = Math.max(radiusMM + 2, Number(offset) || 8);
+    const dotRadius = toPoints(radiusMM, "mm");
+    const outerBorderRadius = dotRadius + toPoints(1.5, "mm");
 
     // Position at sheet margins with safe clearance from edges
     const marginX = toPoints(offsetMM, "mm");
@@ -296,105 +298,36 @@ const drawCameraMarks = ({
 
     // Optional mid-edge fiducials
     if (positions !== "CORNERS") {
-        if (pageWidth > 320) {
+        if (pageWidth > marginX * 4) {
             fiducials.push({ x: pageWidth / 2, y: marginY });
             fiducials.push({ x: pageWidth / 2, y: pageHeight - marginY });
         }
-        if (pageHeight > 320) {
+        if (pageHeight > marginY * 4) {
             fiducials.push({ x: marginX, y: pageHeight / 2 });
             fiducials.push({ x: pageWidth - marginX, y: pageHeight / 2 });
         }
     }
 
-    const normStyle = String(style).toUpperCase();
-
     for (const pt of fiducials) {
-        // White quiet-zone backing so optical cameras have maximum contrast
+        // Outer border ring with white contrast backing
         page.drawCircle({
             x: pt.x,
             y: pt.y,
-            size: quietZone,
+            size: outerBorderRadius,
             color: rgb(1, 1, 1),
-            borderWidth: 0
+            borderColor: rgb(0, 0, 0),
+            borderWidth: 0.5
         });
 
-        // Outer targeting guide ring (for RING and TARGET styles)
-        if (normStyle === "RING" || normStyle === "TARGET") {
-            page.drawCircle({
-                x: pt.x,
-                y: pt.y,
-                size: guideRadius,
-                borderColor: rgb(0, 0, 0),
-                borderWidth: 0.4
-            });
-        }
-
-        // High-contrast solid black camera fiducial dot
+        // 5 mm radius circle filled with color with an outer border
         page.drawCircle({
             x: pt.x,
             y: pt.y,
             size: dotRadius,
             color: rgb(0, 0, 0),
-            borderWidth: 0
+            borderColor: rgb(0, 0, 0),
+            borderWidth: 0.25
         });
-
-        // Cross guide ticks
-        if (normStyle === "RING" || normStyle === "TARGET") {
-            const tickLen = 3.5;
-            page.drawLine({
-                start: { x: pt.x - guideRadius - tickLen, y: pt.y },
-                end: { x: pt.x - dotRadius - 0.5, y: pt.y },
-                thickness: 0.35,
-                color: rgb(0, 0, 0)
-            });
-            page.drawLine({
-                start: { x: pt.x + dotRadius + 0.5, y: pt.y },
-                end: { x: pt.x + guideRadius + tickLen, y: pt.y },
-                thickness: 0.35,
-                color: rgb(0, 0, 0)
-            });
-            page.drawLine({
-                start: { x: pt.x, y: pt.y - guideRadius - tickLen },
-                end: { x: pt.x, y: pt.y - dotRadius - 0.5 },
-                thickness: 0.35,
-                color: rgb(0, 0, 0)
-            });
-            page.drawLine({
-                start: { x: pt.x, y: pt.y + dotRadius + 0.5 },
-                end: { x: pt.x, y: pt.y + guideRadius + tickLen },
-                thickness: 0.35,
-                color: rgb(0, 0, 0)
-            });
-        }
-
-        // Extended crosshair lines for TARGET style
-        if (normStyle === "TARGET") {
-            const extSpan = guideRadius * 1.5;
-            page.drawLine({
-                start: { x: pt.x - extSpan, y: pt.y },
-                end: { x: pt.x - guideRadius - 4, y: pt.y },
-                thickness: 0.3,
-                color: rgb(0, 0, 0)
-            });
-            page.drawLine({
-                start: { x: pt.x + guideRadius + 4, y: pt.y },
-                end: { x: pt.x + extSpan, y: pt.y },
-                thickness: 0.3,
-                color: rgb(0, 0, 0)
-            });
-            page.drawLine({
-                start: { x: pt.x, y: pt.y - extSpan },
-                end: { x: pt.x, y: pt.y - guideRadius - 4 },
-                thickness: 0.3,
-                color: rgb(0, 0, 0)
-            });
-            page.drawLine({
-                start: { x: pt.x, y: pt.y + guideRadius + 4 },
-                end: { x: pt.x, y: pt.y + extSpan },
-                thickness: 0.3,
-                color: rgb(0, 0, 0)
-            });
-        }
     }
 };
 
@@ -597,7 +530,8 @@ const drawProductionMarks = ({
             maxX,
             minY,
             maxY,
-            size: cameraOpts.size ?? marks?.cameraMarkSize ?? 5,
+            radius: cameraOpts.radius ?? marks?.cameraMarkRadius ?? 5,
+            size: cameraOpts.size ?? marks?.cameraMarkSize ?? 10,
             offset: cameraOpts.offset ?? marks?.cameraMarkOffset ?? 8,
             style: cameraOpts.style ?? marks?.cameraMarkStyle ?? "RING",
             positions: cameraOpts.positions ?? marks?.cameraMarkPositions ?? "CORNERS_AND_EDGES"

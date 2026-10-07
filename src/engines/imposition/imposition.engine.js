@@ -790,12 +790,26 @@ const normalizeMarks = (
             ),
 
         cameraMarks:
-            Boolean(
-                raw.cameraMarks ??
-                raw.camera ??
-                raw.opticalMarks ??
-                true
-            ),
+            typeof raw.cameraMarks === "object"
+                ? raw.cameraMarks
+                : Boolean(
+                    raw.cameraMarks ??
+                    raw.camera ??
+                    raw.opticalMarks ??
+                    false
+                ),
+
+        cameraMarkRadius:
+            Number(raw.cameraMarkRadius ?? (typeof raw.cameraMarks === "object" ? raw.cameraMarks.radius : null) ?? 5),
+
+        cameraMarkSize:
+            Number(raw.cameraMarkSize ?? (typeof raw.cameraMarks === "object" ? raw.cameraMarks.size : null) ?? 10),
+
+        cameraMarkOffset:
+            Number(raw.cameraMarkOffset ?? (typeof raw.cameraMarks === "object" ? raw.cameraMarks.offset : null) ?? 8),
+
+        cameraMarkPositions:
+            String(raw.cameraMarkPositions ?? (typeof raw.cameraMarks === "object" ? raw.cameraMarks.positions : null) ?? "CORNERS_AND_EDGES"),
 
         registration:
             Boolean(

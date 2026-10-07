@@ -1224,8 +1224,11 @@ const normalizeImpositionConfig = (
                         .cameraMarks
                 ),
 
+        cameraMarkRadius:
+            Number(marks.cameraMarkRadius ?? (typeof marks.cameraMarks === "object" ? marks.cameraMarks.radius : null) ?? 5),
+
         cameraMarkSize:
-            Number(marks.cameraMarkSize ?? (typeof marks.cameraMarks === "object" ? marks.cameraMarks.size : null) ?? 5),
+            Number(marks.cameraMarkSize ?? (typeof marks.cameraMarks === "object" ? marks.cameraMarks.size : null) ?? 10),
 
         cameraMarkOffset:
             Number(marks.cameraMarkOffset ?? (typeof marks.cameraMarks === "object" ? marks.cameraMarks.offset : null) ?? 8),
@@ -1254,6 +1257,9 @@ const normalizeImpositionConfig = (
      */
 
     return {
+
+        printTechnology:
+            String(raw.printTechnology || raw.pressType || "OFFSET").toUpperCase(),
 
         layout: {
 
