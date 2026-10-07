@@ -1213,14 +1213,28 @@ const normalizeImpositionConfig = (
             ),
 
         cameraMarks:
-            Boolean(
-                marks.cameraMarks ??
-                marks.camera ??
-                marks.opticalMarks ??
-                DEFAULT_IMPOSITION_CONFIG
-                    .marks
-                    .cameraMarks
-            ),
+            typeof marks.cameraMarks === "object"
+                ? marks.cameraMarks
+                : Boolean(
+                    marks.cameraMarks ??
+                    marks.camera ??
+                    marks.opticalMarks ??
+                    DEFAULT_IMPOSITION_CONFIG
+                        .marks
+                        .cameraMarks
+                ),
+
+        cameraMarkSize:
+            Number(marks.cameraMarkSize ?? (typeof marks.cameraMarks === "object" ? marks.cameraMarks.size : null) ?? 5),
+
+        cameraMarkOffset:
+            Number(marks.cameraMarkOffset ?? (typeof marks.cameraMarks === "object" ? marks.cameraMarks.offset : null) ?? 8),
+
+        cameraMarkStyle:
+            String(marks.cameraMarkStyle ?? (typeof marks.cameraMarks === "object" ? marks.cameraMarks.style : null) ?? "RING"),
+
+        cameraMarkPositions:
+            String(marks.cameraMarkPositions ?? (typeof marks.cameraMarks === "object" ? marks.cameraMarks.positions : null) ?? "CORNERS_AND_EDGES"),
 
         jobInfo:
             Boolean(
