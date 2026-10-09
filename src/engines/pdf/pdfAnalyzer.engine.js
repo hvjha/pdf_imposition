@@ -180,7 +180,10 @@ const analyzePage = (page, pageNumber) => {
 const analyzePdf = async (buffer) => {
 
     const pdfDoc =
-        await PDFDocument.load(buffer);
+        await PDFDocument.load(buffer, {
+            updateMetadata: false,
+            ignoreEncryption: true
+        });
 
 
     const pageCount =

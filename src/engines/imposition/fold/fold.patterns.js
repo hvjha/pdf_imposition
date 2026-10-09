@@ -178,24 +178,24 @@ const PATTERN_16PP = {
     rows: 2,
     physicalMappingConfirmed: true,
     front: [
-        { pageNumber: 5,  row: 0, column: 0, rotation: 180 },
+        { pageNumber: 5, row: 0, column: 0, rotation: 180 },
         { pageNumber: 12, row: 0, column: 1, rotation: 180 },
-        { pageNumber: 9,  row: 0, column: 2, rotation: 180 },
-        { pageNumber: 8,  row: 0, column: 3, rotation: 180 },
-        { pageNumber: 4,  row: 1, column: 0, rotation: 0 },
+        { pageNumber: 9, row: 0, column: 2, rotation: 180 },
+        { pageNumber: 8, row: 0, column: 3, rotation: 180 },
+        { pageNumber: 4, row: 1, column: 0, rotation: 0 },
         { pageNumber: 13, row: 1, column: 1, rotation: 0 },
         { pageNumber: 16, row: 1, column: 2, rotation: 0 },
-        { pageNumber: 1,  row: 1, column: 3, rotation: 0 }
+        { pageNumber: 1, row: 1, column: 3, rotation: 0 }
     ],
     back: [
-        { pageNumber: 7,  row: 0, column: 0, rotation: 180 },
+        { pageNumber: 7, row: 0, column: 0, rotation: 180 },
         { pageNumber: 10, row: 0, column: 1, rotation: 180 },
         { pageNumber: 11, row: 0, column: 2, rotation: 180 },
-        { pageNumber: 6,  row: 0, column: 3, rotation: 180 },
-        { pageNumber: 2,  row: 1, column: 0, rotation: 0 },
+        { pageNumber: 6, row: 0, column: 3, rotation: 180 },
+        { pageNumber: 2, row: 1, column: 0, rotation: 0 },
         { pageNumber: 15, row: 1, column: 1, rotation: 0 },
         { pageNumber: 14, row: 1, column: 2, rotation: 0 },
-        { pageNumber: 3,  row: 1, column: 3, rotation: 0 }
+        { pageNumber: 3, row: 1, column: 3, rotation: 0 }
     ]
 };
 
@@ -214,19 +214,19 @@ const PATTERN_32PP = {
     rows: 4,
     physicalMappingConfirmed: true,
     front: [
-        { pageNumber: 5,  row: 0, column: 0, rotation: 180 },
+        { pageNumber: 5, row: 0, column: 0, rotation: 180 },
         { pageNumber: 28, row: 0, column: 1, rotation: 180 },
         { pageNumber: 21, row: 0, column: 2, rotation: 180 },
         { pageNumber: 12, row: 0, column: 3, rotation: 180 },
-        { pageNumber: 4,  row: 1, column: 0, rotation: 0 },
+        { pageNumber: 4, row: 1, column: 0, rotation: 0 },
         { pageNumber: 29, row: 1, column: 1, rotation: 0 },
         { pageNumber: 20, row: 1, column: 2, rotation: 0 },
         { pageNumber: 13, row: 1, column: 3, rotation: 0 },
-        { pageNumber: 8,  row: 2, column: 0, rotation: 180 },
+        { pageNumber: 8, row: 2, column: 0, rotation: 180 },
         { pageNumber: 25, row: 2, column: 1, rotation: 180 },
         { pageNumber: 24, row: 2, column: 2, rotation: 180 },
-        { pageNumber: 9,  row: 2, column: 3, rotation: 180 },
-        { pageNumber: 1,  row: 3, column: 0, rotation: 0 },
+        { pageNumber: 9, row: 2, column: 3, rotation: 180 },
+        { pageNumber: 1, row: 3, column: 0, rotation: 0 },
         { pageNumber: 32, row: 3, column: 1, rotation: 0 },
         { pageNumber: 17, row: 3, column: 2, rotation: 0 },
         { pageNumber: 16, row: 3, column: 3, rotation: 0 }
@@ -235,19 +235,19 @@ const PATTERN_32PP = {
         { pageNumber: 11, row: 0, column: 0, rotation: 180 },
         { pageNumber: 22, row: 0, column: 1, rotation: 180 },
         { pageNumber: 27, row: 0, column: 2, rotation: 180 },
-        { pageNumber: 6,  row: 0, column: 3, rotation: 180 },
+        { pageNumber: 6, row: 0, column: 3, rotation: 180 },
         { pageNumber: 14, row: 1, column: 0, rotation: 0 },
         { pageNumber: 19, row: 1, column: 1, rotation: 0 },
         { pageNumber: 30, row: 1, column: 2, rotation: 0 },
-        { pageNumber: 3,  row: 1, column: 3, rotation: 0 },
+        { pageNumber: 3, row: 1, column: 3, rotation: 0 },
         { pageNumber: 10, row: 2, column: 0, rotation: 180 },
         { pageNumber: 23, row: 2, column: 1, rotation: 180 },
         { pageNumber: 26, row: 2, column: 2, rotation: 180 },
-        { pageNumber: 7,  row: 2, column: 3, rotation: 180 },
+        { pageNumber: 7, row: 2, column: 3, rotation: 180 },
         { pageNumber: 15, row: 3, column: 0, rotation: 0 },
         { pageNumber: 18, row: 3, column: 1, rotation: 0 },
         { pageNumber: 31, row: 3, column: 2, rotation: 0 },
-        { pageNumber: 2,  row: 3, column: 3, rotation: 0 }
+        { pageNumber: 2, row: 3, column: 3, rotation: 0 }
     ]
 };
 

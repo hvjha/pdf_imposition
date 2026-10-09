@@ -40,7 +40,7 @@ const uploadPdf = async (
 
             path:
 
-                filePath,
+            filePath,
 
             originalname,
 
@@ -167,6 +167,9 @@ const uploadPdf = async (
                 mimeType:
                     mimetype,
 
+                filePath:
+                    storedFile.localPath || null,
+
                 status:
                     "UPLOADED"
             });
@@ -192,7 +195,7 @@ const uploadPdf = async (
             );
 
         } catch (
-            cleanupError
+        cleanupError
         ) {
 
             console.warn(
@@ -233,7 +236,7 @@ const uploadPdf = async (
         });
 
     } catch (
-        error
+    error
     ) {
 
         console.error(
@@ -257,7 +260,7 @@ const uploadPdf = async (
                 );
 
             } catch (
-                cleanupError
+            cleanupError
             ) {
 
                 console.warn(

@@ -10,6 +10,7 @@ import { deleteFileFromGridFS } from "../services/gridfs.service.js";
 const getJobHistory = async (req, res) => {
     try {
         const jobs = await ProductionJob.find()
+            .select("originalFileName fileSize fileId status createdAt updatedAt outputFileId analysis.pageCount analysis.firstPage.source analysis.colorProfile.colorSpace productionConfig.crop productionConfig.imposition")
             .sort({ createdAt: -1 })
             .limit(100)
             .lean();

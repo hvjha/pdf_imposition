@@ -148,14 +148,14 @@ const imposePdf = async (
 
         const requestConfig =
             req.body &&
-            typeof req.body === "object"
+                typeof req.body === "object"
                 ? req.body
                 : {};
 
 
         const savedConfig =
             job.productionConfig &&
-            typeof job.productionConfig === "object"
+                typeof job.productionConfig === "object"
                 ? job.productionConfig
                 : {};
 
@@ -423,7 +423,7 @@ const imposePdf = async (
             }
 
         } catch (
-            updateError
+        updateError
         ) {
 
             console.error(

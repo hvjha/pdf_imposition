@@ -170,27 +170,27 @@ const COLOR_BAR_PATCHES = [
     { name: "Y100", color: cmyk(0, 0, 1, 0) },
     { name: "K100", color: cmyk(0, 0, 0, 1) },
     // 75% Tints
-    { name: "C75",  color: cmyk(0.75, 0, 0, 0) },
-    { name: "M75",  color: cmyk(0, 0.75, 0, 0) },
-    { name: "Y75",  color: cmyk(0, 0, 0.75, 0) },
-    { name: "K75",  color: cmyk(0, 0, 0, 0.75) },
+    { name: "C75", color: cmyk(0.75, 0, 0, 0) },
+    { name: "M75", color: cmyk(0, 0.75, 0, 0) },
+    { name: "Y75", color: cmyk(0, 0, 0.75, 0) },
+    { name: "K75", color: cmyk(0, 0, 0, 0.75) },
     // 50% Tints
-    { name: "C50",  color: cmyk(0.5, 0, 0, 0) },
-    { name: "M50",  color: cmyk(0, 0.5, 0, 0) },
-    { name: "Y50",  color: cmyk(0, 0, 0.5, 0) },
-    { name: "K50",  color: cmyk(0, 0, 0, 0.5) },
+    { name: "C50", color: cmyk(0.5, 0, 0, 0) },
+    { name: "M50", color: cmyk(0, 0.5, 0, 0) },
+    { name: "Y50", color: cmyk(0, 0, 0.5, 0) },
+    { name: "K50", color: cmyk(0, 0, 0, 0.5) },
     // 25% Tints
-    { name: "C25",  color: cmyk(0.25, 0, 0, 0) },
-    { name: "M25",  color: cmyk(0, 0.25, 0, 0) },
-    { name: "Y25",  color: cmyk(0, 0, 0.25, 0) },
-    { name: "K25",  color: cmyk(0, 0, 0, 0.25) },
+    { name: "C25", color: cmyk(0.25, 0, 0, 0) },
+    { name: "M25", color: cmyk(0, 0.25, 0, 0) },
+    { name: "Y25", color: cmyk(0, 0, 0.25, 0) },
+    { name: "K25", color: cmyk(0, 0, 0, 0.25) },
     // 2-Color & 3-Color Overprints
-    { name: "RED",  color: cmyk(0, 1, 1, 0) },       // M + Y
-    { name: "GRN",  color: cmyk(1, 0, 1, 0) },       // C + Y
-    { name: "BLU",  color: cmyk(1, 1, 0, 0) },       // C + M
-    { name: "3CK",  color: cmyk(0.8, 0.8, 0.8, 0) }, // 3C Gray
+    { name: "RED", color: cmyk(0, 1, 1, 0) },       // M + Y
+    { name: "GRN", color: cmyk(1, 0, 1, 0) },       // C + Y
+    { name: "BLU", color: cmyk(1, 1, 0, 0) },       // C + M
+    { name: "3CK", color: cmyk(0.8, 0.8, 0.8, 0) }, // 3C Gray
     // Paper White
-    { name: "WHT",  color: cmyk(0, 0, 0, 0) }
+    { name: "WHT", color: cmyk(0, 0, 0, 0) }
 ];
 
 const drawColorBars = ({
@@ -268,48 +268,144 @@ const drawCameraMarks = ({
     page,
     pageWidth,
     pageHeight,
-    minX,
-    maxX,
-    minY,
-    maxY,
+    minX = 36,
+    maxX = pageWidth - 36,
+    minY = 36,
+    maxY = pageHeight - 36,
     radius = 5,
     size,
     offset = 8,
     style = "RING",
     positions = "CORNERS_AND_EDGES"
 }) => {
-    // 5 mm radius circle filled with color with an outer border
-    const radiusMM = Number(radius) || (Number(size) ? (Number(size) <= 6 ? Number(size) : Number(size) / 2) : 5) || 5;
-    const offsetMM = Math.max(radiusMM + 2, Number(offset) || 8);
-    const dotRadius = toPoints(radiusMM, "mm");
-    const outerBorderRadius = dotRadius + toPoints(1.5, "mm");
+    // Determine raw radius in mm
+    let radiusMM = Number(radius) || (Number(size) ? (Number(size) <= 6 ? Number(size) : Number(size) / 2) : 5) || 5;
+    const clearance = toPoints(1.5, "mm"); // 1.5mm safety clearance from book page borders
 
-    // Position at sheet margins with safe clearance from edges
-    const marginX = toPoints(offsetMM, "mm");
-    const marginY = toPoints(offsetMM, "mm");
+    // Calculate available waste margins around book placements
+    const leftMargin = Math.max(0, minX);
+    const rightMargin = Math.max(0, pageWidth - maxX);
+    const bottomMargin = Math.max(0, minY);
+    const topMargin = Math.max(0, pageHeight - maxY);
+    const minAvailableMargin = Math.min(
+        leftMargin > 0 ? leftMargin : 50,
+        rightMargin > 0 ? rightMargin : 50,
+        bottomMargin > 0 ? bottomMargin : 50,
+        topMargin > 0 ? topMargin : 50
+    );
 
-    const fiducials = [
-        // 4 sheet corners
-        { x: marginX, y: marginY },
-        { x: pageWidth - marginX, y: marginY },
-        { x: marginX, y: pageHeight - marginY },
-        { x: pageWidth - marginX, y: pageHeight - marginY },
-    ];
+    // If margin is tight, automatically scale camera mark radius so it NEVER encroaches on page trim
+    let dotRadius = toPoints(radiusMM, "mm");
+    let outerBorderRadius = dotRadius + toPoints(1.5, "mm");
+    if (minAvailableMargin < outerBorderRadius * 2 + clearance) {
+        const maxSafeRadius = Math.max(toPoints(1.5, "mm"), (minAvailableMargin / 2) - clearance - toPoints(0.5, "mm"));
+        dotRadius = maxSafeRadius;
+        outerBorderRadius = dotRadius + toPoints(1.0, "mm");
+    }
 
-    // Optional mid-edge fiducials
+    // Book page exclusion zone: any mark intersecting this box covers book page content
+    const pageBox = {
+        left: minX - clearance,
+        right: maxX + clearance,
+        bottom: minY - clearance,
+        top: maxY + clearance
+    };
+
+    const collidesWithBookPage = (x, y, r) => {
+        return (
+            x + r > pageBox.left &&
+            x - r < pageBox.right &&
+            y + r > pageBox.bottom &&
+            y - r < pageBox.top
+        );
+    };
+
+    // Safe corner fiducials centered in waste margins
+    const fiducials = [];
+
+    // Bottom-Left
+    const blX = leftMargin > outerBorderRadius * 2 ? leftMargin / 2 : toPoints(offset, "mm");
+    const blY = bottomMargin > outerBorderRadius * 2 ? bottomMargin / 2 : toPoints(offset, "mm");
+    if (!collidesWithBookPage(blX, blY, outerBorderRadius)) {
+        fiducials.push({ x: blX, y: blY });
+    } else if (leftMargin > outerBorderRadius * 2) {
+        fiducials.push({ x: outerBorderRadius + clearance, y: outerBorderRadius + clearance });
+    }
+
+    // Bottom-Right
+    const brX = rightMargin > outerBorderRadius * 2 ? (maxX + pageWidth) / 2 : pageWidth - toPoints(offset, "mm");
+    const brY = bottomMargin > outerBorderRadius * 2 ? bottomMargin / 2 : toPoints(offset, "mm");
+    if (!collidesWithBookPage(brX, brY, outerBorderRadius)) {
+        fiducials.push({ x: brX, y: brY });
+    } else if (rightMargin > outerBorderRadius * 2) {
+        fiducials.push({ x: pageWidth - outerBorderRadius - clearance, y: outerBorderRadius + clearance });
+    }
+
+    // Top-Left
+    const tlX = leftMargin > outerBorderRadius * 2 ? leftMargin / 2 : toPoints(offset, "mm");
+    const tlY = topMargin > outerBorderRadius * 2 ? (maxY + pageHeight) / 2 : pageHeight - toPoints(offset, "mm");
+    if (!collidesWithBookPage(tlX, tlY, outerBorderRadius)) {
+        fiducials.push({ x: tlX, y: tlY });
+    } else if (leftMargin > outerBorderRadius * 2) {
+        fiducials.push({ x: outerBorderRadius + clearance, y: pageHeight - outerBorderRadius - clearance });
+    }
+
+    // Top-Right
+    const trX = rightMargin > outerBorderRadius * 2 ? (maxX + pageWidth) / 2 : pageWidth - toPoints(offset, "mm");
+    const trY = topMargin > outerBorderRadius * 2 ? (maxY + pageHeight) / 2 : pageHeight - toPoints(offset, "mm");
+    if (!collidesWithBookPage(trX, trY, outerBorderRadius)) {
+        fiducials.push({ x: trX, y: trY });
+    } else if (rightMargin > outerBorderRadius * 2) {
+        fiducials.push({ x: pageWidth - outerBorderRadius - clearance, y: pageHeight - outerBorderRadius - clearance });
+    }
+
+    // Mid-Edge fiducials (strictly placed only if sheet margins provide ample waste margin without covering page)
     if (positions !== "CORNERS") {
-        if (pageWidth > marginX * 4) {
-            fiducials.push({ x: pageWidth / 2, y: marginY });
-            fiducials.push({ x: pageWidth / 2, y: pageHeight - marginY });
+        // Top Mid-Edge
+        if (topMargin >= outerBorderRadius * 2 + clearance * 2) {
+            const topY = maxY + topMargin / 2;
+            const topX = pageWidth / 2;
+            if (!collidesWithBookPage(topX, topY, outerBorderRadius)) {
+                fiducials.push({ x: topX, y: topY });
+            }
         }
-        if (pageHeight > marginY * 4) {
-            fiducials.push({ x: marginX, y: pageHeight / 2 });
-            fiducials.push({ x: pageWidth - marginX, y: pageHeight / 2 });
+
+        // Bottom Mid-Edge
+        if (bottomMargin >= outerBorderRadius * 2 + clearance * 2) {
+            const botY = bottomMargin / 2;
+            const botX = pageWidth / 2;
+            if (!collidesWithBookPage(botX, botY, outerBorderRadius)) {
+                fiducials.push({ x: botX, y: botY });
+            }
+        }
+
+        // Left Mid-Edge
+        if (leftMargin >= outerBorderRadius * 2 + clearance * 2) {
+            const lX = leftMargin / 2;
+            const lY = pageHeight / 2;
+            if (!collidesWithBookPage(lX, lY, outerBorderRadius)) {
+                fiducials.push({ x: lX, y: lY });
+            }
+        }
+
+        // Right Mid-Edge
+        if (rightMargin >= outerBorderRadius * 2 + clearance * 2) {
+            const rX = maxX + rightMargin / 2;
+            const rY = pageHeight / 2;
+            if (!collidesWithBookPage(rX, rY, outerBorderRadius)) {
+                fiducials.push({ x: rX, y: rY });
+            }
         }
     }
 
+    // Render non-overlapping camera marks
     for (const pt of fiducials) {
-        // Outer border ring with white contrast backing
+        // Strict runtime guard: never draw if any point overlaps the book page box
+        if (collidesWithBookPage(pt.x, pt.y, outerBorderRadius)) {
+            continue;
+        }
+
+        // Outer contrast white ring with black border
         page.drawCircle({
             x: pt.x,
             y: pt.y,
@@ -319,7 +415,7 @@ const drawCameraMarks = ({
             borderWidth: 0.5
         });
 
-        // 5 mm radius circle filled with color with an outer border
+        // Inner solid fiducial target
         page.drawCircle({
             x: pt.x,
             y: pt.y,
@@ -539,20 +635,8 @@ const drawProductionMarks = ({
     }
 
     /**
-     * 4. REGISTRATION MARKS
+     * 4. REGISTRATION MARKS (Removed - deprecated in modern automated workflow)
      */
-    const registrationEnabled =
-        marks?.registration ??
-        marks?.registrationMarks ??
-        true;
-
-    if (registrationEnabled) {
-        drawRegistrationMarks({
-            page,
-            pageWidth,
-            pageHeight
-        });
-    }
 
     /**
      * 5. JOB SLUG LINE

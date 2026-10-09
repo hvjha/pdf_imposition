@@ -184,7 +184,7 @@ const applyWorkStyle = ({
         typeof workStyle === "string"
             ? workStyle
             : workStyle?.type ||
-              "SHEETWISE";
+            "SHEETWISE";
 
 
     switch (type) {

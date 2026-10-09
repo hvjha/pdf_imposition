@@ -2346,12 +2346,12 @@ const drawSourcePage = async ({
 
 
     drawPlacedPage({
-    outputPage,
+        outputPage,
 
-    embeddedPage,
+        embeddedPage,
 
-    placement
-});
+        placement
+    });
 };
 
 
@@ -2799,10 +2799,10 @@ const imposePdf = async ({
 
         });
 
-const pdfBuffer =
-    Buffer.isBuffer(pdfBytes)
-        ? pdfBytes
-        : Buffer.from(pdfBytes);
+    const pdfBuffer =
+        Buffer.isBuffer(pdfBytes)
+            ? pdfBytes
+            : Buffer.from(pdfBytes);
     /* --------------------------------------------------------
      * RESULT
      * --------------------------------------------------------

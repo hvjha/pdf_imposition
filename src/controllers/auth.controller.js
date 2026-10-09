@@ -4,8 +4,8 @@
 // ============================================================
 
 const VALID_CREDENTIALS = {
-    username: "prepressimposition",
-    password: "impositionpdfautomation"
+    username: process.env.ADMIN_USER || "prepressimposition",
+    password: process.env.ADMIN_PASS || "impositionpdfautomation"
 };
 
 const login = async (req, res) => {

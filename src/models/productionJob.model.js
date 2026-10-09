@@ -58,6 +58,16 @@ const productionJobSchema = new mongoose.Schema(
             default: null
         },
 
+        filePath: {
+            type: String,
+            default: null
+        },
+
+        outputFilePath: {
+            type: String,
+            default: null
+        },
+
         errorMessage: {
             type: String,
             default: null
@@ -67,6 +77,14 @@ const productionJobSchema = new mongoose.Schema(
         timestamps: true
     }
 );
+
+// Optimized MongoDB Indexes for High-Throughput Prepress Ingestion & Queries
+productionJobSchema.index({ createdAt: -1 });
+productionJobSchema.index({ fileId: 1 });
+productionJobSchema.index({ outputFileId: 1 });
+productionJobSchema.index({ status: 1 });
+productionJobSchema.index({ status: 1, createdAt: -1 });
+productionJobSchema.index({ originalFileName: "text" });
 
 const ProductionJob = mongoose.model(
     "ProductionJob",

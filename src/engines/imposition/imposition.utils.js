@@ -53,7 +53,7 @@ const toPoints = (
 
 
     switch (
-        normalizedUnit
+    normalizedUnit
     ) {
 
         case "pt":
@@ -329,12 +329,12 @@ const isPlacementInsideSheet = (
         placement.y >= 0 &&
 
         placement.x +
-            placement.width <=
-            sheet.width &&
+        placement.width <=
+        sheet.width &&
 
         placement.y +
-            placement.height <=
-            sheet.height
+        placement.height <=
+        sheet.height
     );
 };
 
