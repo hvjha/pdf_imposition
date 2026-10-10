@@ -656,6 +656,227 @@ const drawProductionMarks = ({
             font
         });
     }
+
+    /**
+     * 6. SPINE COLLATION STEP MARKS (Kodak Preps / Prinergy Standard)
+     */
+    const collatingMarksEnabled =
+        marks?.collatingMarks === true ||
+        Boolean(marks?.collating);
+
+    const totalSigs = marks?.totalSignatures ?? jobInfo?.totalSignatures ?? 1;
+    const sigIdx = marks?.signatureIndex ?? jobInfo?.signatureIndex ?? 0;
+
+    if (collatingMarksEnabled && totalSigs > 1) {
+        drawCollationMarks({
+            page,
+            pageWidth,
+            pageHeight,
+            signatureIndex: sigIdx,
+            totalSignatures: totalSigs,
+            minX,
+            maxX,
+            minY,
+            maxY
+        });
+    }
+
+    /**
+     * 7. FOLD & KNIFE MARKS (Kodak Stahlfolder / MBO Folding Machine Setup)
+     */
+    const foldMarksEnabled =
+        marks?.foldMarks === true ||
+        Boolean(marks?.foldingMarks);
+
+    if (foldMarksEnabled) {
+        drawFoldMarks({
+            page,
+            pageWidth,
+            pageHeight,
+            minX,
+            maxX,
+            minY,
+            maxY
+        });
+    }
+
+    /**
+     * 8. DIGITAL FINISHING BARCODE (Duplo / Horizon / Zünd Automated Cutter Barcode)
+     */
+    const digitalBarcodeEnabled =
+        marks?.digitalBarcode === true ||
+        marks?.printTechnology === "DIGITAL" ||
+        marks?.barcode === true;
+
+    if (digitalBarcodeEnabled) {
+        drawDigitalBarcode({
+            page,
+            pageWidth,
+            pageHeight,
+            maxY,
+            jobInfo,
+            signatureIndex: sigIdx,
+            font
+        });
+    }
+};
+
+/**
+ * ============================================================
+ * DRAW SPINE COLLATION STEP MARKS (Kodak Preps / Prinergy Standard)
+ * ============================================================
+ * Printed on the spine fold of multi-signature book gatherings.
+ * On each signature, the mark steps down progressively along the spine.
+ * When folded signatures are gathered in order on the binder,
+ * the marks form an unbroken diagonal staircase.
+ */
+const drawCollationMarks = ({
+    page,
+    pageWidth,
+    pageHeight,
+    signatureIndex = 0,
+    totalSignatures = 1,
+    minX = 0,
+    maxX = pageWidth,
+    minY = 0,
+    maxY = pageHeight
+}) => {
+    if (totalSignatures <= 1) return;
+
+    // Center spine fold line (vertical centerline between book pages)
+    const spineX = (minX + maxX) / 2;
+    const spineHeight = maxY - minY;
+    if (spineHeight <= 40) return;
+
+    // Step mark dimensions: ~3mm width x 8mm height
+    const markW = toPoints(3, "mm");
+    const markH = toPoints(8, "mm");
+
+    // Stepping progression from 15% to 85% of signature spine height
+    const startY = minY + spineHeight * 0.15;
+    const endY = minY + spineHeight * 0.85;
+    const fraction = totalSignatures > 1 ? signatureIndex / (totalSignatures - 1) : 0.5;
+    const markY = startY + (endY - startY) * fraction;
+
+    // Draw solid black collation step block on the fold axis
+    page.drawRectangle({
+        x: spineX - markW / 2,
+        y: markY - markH / 2,
+        width: markW,
+        height: markH,
+        color: rgb(0, 0, 0)
+    });
+};
+
+/**
+ * ============================================================
+ * DRAW FOLD MARKS (Kodak Preps Folding Machine Knife Alignment)
+ * ============================================================
+ * Short dashed / tick marks placed in sheet margins at the folding axes
+ * to align Stahlfolder / MBO folding knives.
+ */
+const drawFoldMarks = ({
+    page,
+    pageWidth,
+    pageHeight,
+    minX,
+    maxX,
+    minY,
+    maxY
+}) => {
+    const tickLen = toPoints(5, "mm");
+    const thickness = 0.5;
+    const foldColor = rgb(0.1, 0.1, 0.1);
+
+    // Vertical fold line at center X
+    const centerX = pageWidth / 2;
+    if (minY > tickLen) {
+        page.drawLine({
+            start: { x: centerX, y: 0 },
+            end: { x: centerX, y: Math.min(minY - 2, tickLen) },
+            thickness,
+            color: foldColor
+        });
+    }
+    if (pageHeight - maxY > tickLen) {
+        page.drawLine({
+            start: { x: centerX, y: pageHeight },
+            end: { x: centerX, y: Math.max(maxY + 2, pageHeight - tickLen) },
+            thickness,
+            color: foldColor
+        });
+    }
+
+    // Horizontal fold line at center Y
+    const centerY = pageHeight / 2;
+    if (minX > tickLen) {
+        page.drawLine({
+            start: { x: 0, y: centerY },
+            end: { x: Math.min(minX - 2, tickLen), y: centerY },
+            thickness,
+            color: foldColor
+        });
+    }
+    if (pageWidth - maxX > tickLen) {
+        page.drawLine({
+            start: { x: pageWidth, y: centerY },
+            end: { x: Math.max(maxX + 2, pageWidth - tickLen), y: centerY },
+            thickness,
+            color: foldColor
+        });
+    }
+};
+
+/**
+ * ============================================================
+ * DRAW DIGITAL CUTTER BARCODE (Duplo / Horizon / Zünd Automation)
+ * ============================================================
+ * Vector barcode pattern in the top margin for automated digital finishing.
+ */
+const drawDigitalBarcode = ({
+    page,
+    pageWidth,
+    pageHeight,
+    maxY,
+    jobInfo,
+    signatureIndex = 0,
+    font
+}) => {
+    const topWaste = pageHeight - maxY;
+    if (topWaste < 15) return;
+
+    const barcodeX = pageWidth - toPoints(70, "mm");
+    const barcodeY = pageHeight - toPoints(8, "mm");
+    const barHeight = toPoints(4.5, "mm");
+
+    const bars = [
+        2, 1, 3, 1, 1, 2, 3, 1, 2, 1, 1, 3, 2, 1, 3, 1, 1, 2, 1, 3, 2, 1, 1, 2, 3
+    ];
+    let curX = barcodeX;
+    bars.forEach((w, idx) => {
+        if (idx % 2 === 0) {
+            page.drawRectangle({
+                x: curX,
+                y: barcodeY,
+                width: w * 0.8,
+                height: barHeight,
+                color: rgb(0, 0, 0)
+            });
+        }
+        curX += w * 0.8;
+    });
+
+    if (font) {
+        const jobIdStr = jobInfo?.jobId ? String(jobInfo.jobId).slice(-6) : "DIGI";
+        const codeText = `AUTO-CUT: J#${jobIdStr}-S${signatureIndex + 1}`;
+        page.drawText(codeText, {
+            x: barcodeX,
+            y: barcodeY - 5,
+            size: 5,
+            font,
+            color: rgb(0.2, 0.2, 0.2)
+        });
+    }
 };
 
 export {
@@ -663,5 +884,8 @@ export {
     drawColorBars,
     drawCameraMarks,
     drawRegistrationMarks,
-    drawPlacementCropMarks
+    drawPlacementCropMarks,
+    drawCollationMarks,
+    drawFoldMarks,
+    drawDigitalBarcode
 };

@@ -2461,10 +2461,8 @@ const createOutputPdf = async ({
     }
 
 
-    for (
-        const layout
-        of layouts
-    ) {
+    for (let layoutIdx = 0; layoutIdx < layouts.length; layoutIdx++) {
+        const layout = layouts[layoutIdx];
 
         /*
          * A duplex sheet has one output PDF page for each side.
@@ -2496,11 +2494,19 @@ const createOutputPdf = async ({
 
                 side,
 
-                marks,
+                marks: {
+                    ...marks,
+                    signatureIndex: layoutIdx,
+                    totalSignatures: layouts.length
+                },
 
                 cropMarks,
 
-                jobInfo,
+                jobInfo: {
+                    ...jobInfo,
+                    signatureIndex: layoutIdx,
+                    totalSignatures: layouts.length
+                },
 
                 font:
                     embeddedFont
