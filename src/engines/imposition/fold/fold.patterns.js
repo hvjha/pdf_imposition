@@ -277,31 +277,86 @@ const FOLD_PATTERNS = {
 };
 
 /* ============================================================
+ * DYNAMIC BOX / PACKAGING N-UP PATTERN GENERATOR
+ * ============================================================
+ */
+const generateBoxPattern = ({
+    pagesPerLayout = 4,
+    columns = null,
+    rows = null,
+    interlockMode = "STANDARD",
+    workStyle = "SINGLE_SIDED"
+}) => {
+    const pagesNum = Number(pagesPerLayout) || 4;
+    const cols = columns ? Number(columns) : (pagesNum === 4 ? 2 : pagesNum === 8 ? 2 : pagesNum === 16 ? 4 : Math.ceil(Math.sqrt(pagesNum)));
+    const rws = rows ? Number(rows) : Math.max(1, Math.ceil(pagesNum / cols));
+
+    const front = [];
+    const back = [];
+    const isSingle = String(workStyle).toUpperCase() === "SINGLE_SIDED" || String(workStyle).toUpperCase() === "SIMPLEX";
+
+    for (let r = 0; r < rws; r++) {
+        for (let c = 0; c < cols; c++) {
+            let rot = 0;
+            const normInterlock = String(interlockMode || "").toUpperCase();
+            if (normInterlock === "INTERLOCKING" || normInterlock === "DUTCH") {
+                rot = (r % 2 === 1) ? 180 : 0;
+            } else if (normInterlock === "HEAD_TO_HEAD") {
+                rot = (r % 2 === 0) ? 180 : 0;
+            }
+
+            // In box imposition, Page 1 (outer box artwork) is replicated across all cells on front
+            front.push({ pageNumber: 1, row: r, column: c, rotation: rot });
+            if (!isSingle) {
+                // Page 2 (inner box artwork) is placed on back side if duplex
+                back.push({ pageNumber: 2, row: r, column: c, rotation: rot });
+            }
+        }
+    }
+
+    return {
+        id: `BOX-${cols}X${rws}-${interlockMode || 'STD'}`,
+        mode: "BOX",
+        pages: front.length + back.length,
+        columns: cols,
+        rows: rws,
+        physicalMappingConfirmed: true,
+        front,
+        back
+    };
+};
+
+/* ============================================================
  * GET PATTERN
  * ============================================================
  */
 const getFoldPattern = ({
     pagesPerLayout,
     patternId = null,
-    mode = null
+    mode = null,
+    columns = null,
+    rows = null,
+    interlockMode = "STANDARD"
 }) => {
+    const normalizedMode = String(mode || "").trim().toUpperCase();
+    if (normalizedMode === "BOX" || normalizedMode === "PACKAGING" || (patternId && String(patternId).startsWith("BOX"))) {
+        return generateBoxPattern({ pagesPerLayout, columns, rows, interlockMode });
+    }
+
     const key = `${Number(pagesPerLayout)}PP`;
     const patterns = FOLD_PATTERNS[key];
 
     if (!patterns) {
-        throw new Error(`No fold patterns available for ${key}.`);
+        // Fallback: generate dynamic N-Up box layout for non-standard page counts
+        return generateBoxPattern({ pagesPerLayout, columns, rows, interlockMode });
     }
 
     if (patternId) {
         const pattern = patterns.find(item => item.id === patternId);
-        if (!pattern) {
-            throw new Error(`Fold pattern '${patternId}' not found for ${key}.`);
-        }
-        return pattern;
+        if (pattern) return pattern;
     }
 
     if (mode) {
-        const normalizedMode = String(mode).trim().toUpperCase();
         const modePattern = patterns.find(
             pattern => String(pattern.mode || "").toUpperCase() === normalizedMode
         );
@@ -345,6 +400,7 @@ export {
     PATTERN_8PP,
     PATTERN_16PP,
     PATTERN_32PP,
+    generateBoxPattern,
     getFoldPattern,
     getSupportedFoldPatterns
 };

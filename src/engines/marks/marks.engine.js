@@ -719,6 +719,26 @@ const drawProductionMarks = ({
             font
         });
     }
+
+    /**
+     * 9. BOX STRUCTURAL KEYLINES (Red Cut, Blue Crease, Green Bleed, Finger Hole)
+     */
+    const keylinesEnabled =
+        marks?.dielines === true ||
+        marks?.boxKeylines === true ||
+        marks?.dielineOverlay === true ||
+        marks?.mode === "BOX" ||
+        marks?.isBoxJob === true;
+
+    if (keylinesEnabled && placements.length > 0) {
+        for (const placement of placements) {
+            drawBoxKeylines({
+                page,
+                placement,
+                boxConfig: marks?.boxConfig
+            });
+        }
+    }
 };
 
 /**
@@ -879,6 +899,100 @@ const drawDigitalBarcode = ({
     }
 };
 
+/**
+ * ============================================================
+ * DRAW BOX STRUCTURAL KEYLINES / DIE-LINES
+ * ============================================================
+ * Renders vector keylines (outer cut, crease score lines, tuck flap & thumb hole cutouts)
+ * onto the PDF output for packaging press sheets.
+ */
+const drawBoxKeylines = ({
+    page,
+    placement,
+    boxConfig = {}
+}) => {
+    const { x, y, width, height } = placement;
+    const padX = width * 0.08;
+    const padY = height * 0.08;
+    const innerW = width - padX * 2;
+    const innerH = height - padY * 2;
+
+    const glueW = innerW * 0.08;
+    const panelW = (innerW - glueW) / 4;
+    const tuckH = innerH * 0.12;
+    const mainH = innerH - tuckH * 2;
+
+    const cutColor = rgb(0.93, 0, 0.26); // #EF4444 Red Cut Line
+    const creaseColor = rgb(0, 0.4, 0.95); // #0066FF Blue Crease Line
+    const bleedColor = rgb(0, 0.75, 0.35); // Green Bleed
+
+    // 1. Bleed Outer Boundary
+    page.drawRectangle({
+        x: x + 1,
+        y: y + 1,
+        width: width - 2,
+        height: height - 2,
+        borderColor: bleedColor,
+        borderWidth: 0.3
+    });
+
+    // 2. Outer Cut Perimeter Line
+    page.drawRectangle({
+        x: x + padX,
+        y: y + padY,
+        width: innerW,
+        height: innerH,
+        borderColor: cutColor,
+        borderWidth: 0.5
+    });
+
+    // 3. Vertical Crease Score Lines
+    for (let i = 1; i <= 3; i++) {
+        page.drawLine({
+            start: { x: x + padX + glueW + i * panelW, y: y + padY + tuckH },
+            end: { x: x + padX + glueW + i * panelW, y: y + padY + tuckH + mainH },
+            thickness: 0.4,
+            color: creaseColor
+        });
+    }
+
+    // 4. Glue Tab Crease Line
+    page.drawLine({
+        start: { x: x + padX + glueW, y: y + padY },
+        end: { x: x + padX + glueW, y: y + padY + innerH },
+        thickness: 0.4,
+        color: creaseColor
+    });
+
+    // 5. Top & Bottom Tuck Flap Creases
+    page.drawLine({
+        start: { x: x + padX + glueW, y: y + padY + tuckH },
+        end: { x: x + padX + innerW, y: y + padY + tuckH },
+        thickness: 0.4,
+        color: creaseColor
+    });
+    page.drawLine({
+        start: { x: x + padX + glueW, y: y + padY + tuckH + mainH },
+        end: { x: x + padX + innerW, y: y + padY + tuckH + mainH },
+        thickness: 0.4,
+        color: creaseColor
+    });
+
+    // 6. Thumb Circle Hole Cutout (Top Tuck Flap)
+    const holeRadius = Math.min(12, tuckH * 0.4);
+    const holeCenterX = x + padX + glueW + panelW * 1.5;
+    const holeCenterY = y + padY + innerH - tuckH * 0.5;
+    if (holeRadius > 2) {
+        page.drawCircle({
+            x: holeCenterX,
+            y: holeCenterY,
+            size: holeRadius,
+            borderColor: cutColor,
+            borderWidth: 0.5
+        });
+    }
+};
+
 export {
     drawProductionMarks,
     drawColorBars,
@@ -887,5 +1001,6 @@ export {
     drawPlacementCropMarks,
     drawCollationMarks,
     drawFoldMarks,
-    drawDigitalBarcode
+    drawDigitalBarcode,
+    drawBoxKeylines
 };

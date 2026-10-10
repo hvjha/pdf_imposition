@@ -113,22 +113,22 @@ const validatePlacement = (
         );
     }
 
-    if (placement.x < 0) {
+    if (placement.x < -200) {
         errors.push(
-            "Placement X cannot be negative."
+            "Placement X cannot be negative beyond allowed nesting margin."
         );
     }
 
-    if (placement.y < 0) {
+    if (placement.y < -200) {
         errors.push(
-            "Placement Y cannot be negative."
+            "Placement Y cannot be negative beyond allowed nesting margin."
         );
     }
 
     if (
         sheet &&
         placement.x + placement.width >
-            sheet.width + EPSILON
+            sheet.width + EPSILON + 200
     ) {
         errors.push(
             `Page ${placement.pageNumber} exceeds sheet width.`
@@ -138,7 +138,7 @@ const validatePlacement = (
     if (
         sheet &&
         placement.y + placement.height >
-            sheet.height + EPSILON
+            sheet.height + EPSILON + 200
     ) {
         errors.push(
             `Page ${placement.pageNumber} exceeds sheet height.`
@@ -154,7 +154,8 @@ const validatePlacement = (
 const validateImpositionPlan = ({
     placements,
     sourcePageCount,
-    sheet
+    sheet,
+    mode = null
 }) => {
     const errors = [];
 
@@ -182,6 +183,7 @@ const validateImpositionPlan = ({
     }
 
     const usedPages = new Set();
+    const isBox = mode === "BOX";
 
     placements.forEach((placement) => {
         const validation =
@@ -198,6 +200,7 @@ const validateImpositionPlan = ({
         }
 
         if (
+            !isBox &&
             Number.isInteger(
                 placement.pageNumber
             )

@@ -1753,7 +1753,8 @@ const buildLayoutSide = ({
     geometry,
     pageOffset,
     sourcePageCount,
-    pageRotation = 0
+    pageRotation = 0,
+    boxConfig = null
 }) => {
 
     if (
@@ -1818,6 +1819,16 @@ const buildLayoutSide = ({
         const effectiveRotation =
             ((Number(entry.rotation) || 0) + (Number(pageRotation) || 0)) % 360;
 
+        let posX = position.x;
+        let posY = position.y;
+
+        if (effectiveRotation === 180 && boxConfig) {
+            const shiftX = toPoints(Number(boxConfig.interlockShiftX || 0), 'mm');
+            const shiftY = toPoints(Number(boxConfig.interlockShiftY || 0), 'mm');
+            posX += shiftX;
+            posY += shiftY;
+        }
+
         placements.push({
 
             pageNumber:
@@ -1836,10 +1847,10 @@ const buildLayoutSide = ({
                 ),
 
             x:
-                position.x,
+                posX,
 
             y:
-                position.y,
+                posY,
 
             width:
                 geometry.pageWidth,
@@ -1923,8 +1934,12 @@ const validatePlacements = ({
  */
 
 const validateNoDuplicatePages = (
-    sides
+    sides,
+    mode = null
 ) => {
+    if (mode === "BOX") {
+        return true;
+    }
 
     const used =
         new Set();
@@ -1986,7 +2001,8 @@ const buildPhysicalLayout = ({
     sourcePageCount,
     sheet,
     workStyle,
-    pageRotation = 0
+    pageRotation = 0,
+    boxConfig = null
 }) => {
 
     let frontPlacements =
@@ -2002,7 +2018,9 @@ const buildPhysicalLayout = ({
 
             sourcePageCount,
 
-            pageRotation
+            pageRotation,
+
+            boxConfig
 
         });
 
@@ -2020,7 +2038,9 @@ const buildPhysicalLayout = ({
 
             sourcePageCount,
 
-            pageRotation
+            pageRotation,
+
+            boxConfig
 
         });
 
@@ -2113,7 +2133,8 @@ const buildPhysicalLayout = ({
      */
 
     validateNoDuplicatePages(
-        sides
+        sides,
+        pattern?.mode
     );
 
 
@@ -2137,7 +2158,8 @@ const buildAllPhysicalLayouts = ({
     pagesPerLayout,
     sheet,
     workStyle,
-    pageRotation = 0
+    pageRotation = 0,
+    boxConfig = null
 }) => {
 
     const layoutCount =
@@ -2178,7 +2200,9 @@ const buildAllPhysicalLayouts = ({
 
                 workStyle,
 
-                pageRotation
+                pageRotation,
+
+                boxConfig
 
             });
 
@@ -2237,7 +2261,8 @@ const buildAllPhysicalLayouts = ({
 const validateAllPhysicalLayouts = ({
     layouts,
     sourcePageCount,
-    sheet
+    sheet,
+    mode = null
 }) => {
 
     for (
@@ -2261,17 +2286,6 @@ const validateAllPhysicalLayouts = ({
             );
         }
 
-
-        /*
-         * Validate using your actual validator signature:
-         *
-         * validateImpositionPlan({
-         *     placements,
-         *     sourcePageCount,
-         *     sheet
-         * })
-         */
-
         const validation =
             validateImpositionPlan({
 
@@ -2280,7 +2294,9 @@ const validateAllPhysicalLayouts = ({
 
                 sourcePageCount,
 
-                sheet
+                sheet,
+
+                mode
 
             });
 
@@ -2312,7 +2328,8 @@ const drawSourcePage = async ({
     outputPdf,
     outputPage,
     sourcePdf,
-    placement
+    placement,
+    marks = {}
 }) => {
 
     const pageNumber =
@@ -2337,6 +2354,46 @@ const drawSourcePage = async ({
         sourcePdf.getPage(
             pageNumber - 1
         );
+
+    // Box Auto-Crop White Space Handling
+    const boxCfg = marks?.boxConfig || {};
+    if (marks?.mode === "BOX" || marks?.isBoxJob || boxCfg.removeWhiteSpace) {
+        if (boxCfg.removeWhiteSpace !== false) {
+            const mediaBox = sourcePage.getMediaBox();
+            const trimBox = sourcePage.getTrimBox();
+            const cropBox = sourcePage.getCropBox();
+
+            let cropX = mediaBox.x;
+            let cropY = mediaBox.y;
+            let cropW = mediaBox.width;
+            let cropH = mediaBox.height;
+
+            if (trimBox && trimBox.width < mediaBox.width && trimBox.height < mediaBox.height) {
+                cropX = trimBox.x;
+                cropY = trimBox.y;
+                cropW = trimBox.width;
+                cropH = trimBox.height;
+            } else if (cropBox && cropBox.width < mediaBox.width && cropBox.height < mediaBox.height) {
+                cropX = cropBox.x;
+                cropY = cropBox.y;
+                cropW = cropBox.width;
+                cropH = cropBox.height;
+            } else if (boxCfg.flatWidth > 0 && boxCfg.flatHeight > 0) {
+                const flatW = toPoints(boxCfg.flatWidth, 'mm');
+                const flatH = toPoints(boxCfg.flatHeight, 'mm');
+                if (flatW > 0 && flatH > 0 && (mediaBox.width > flatW + 1 || mediaBox.height > flatH + 1)) {
+                    cropX = mediaBox.x + Math.max(0, (mediaBox.width - flatW) / 2);
+                    cropY = mediaBox.y + Math.max(0, (mediaBox.height - flatH) / 2);
+                    cropW = Math.min(mediaBox.width, flatW);
+                    cropH = Math.min(mediaBox.height, flatH);
+                }
+            }
+
+            if (cropW > 0 && cropH > 0 && (cropW < mediaBox.width || cropH < mediaBox.height)) {
+                sourcePage.setCropBox(cropX, cropY, cropW, cropH);
+            }
+        }
+    }
 
 
     const embeddedPage =
@@ -2388,7 +2445,9 @@ const drawLayoutSide = async ({
 
             sourcePdf,
 
-            placement
+            placement,
+
+            marks
 
         });
     }
@@ -2445,7 +2504,8 @@ const createOutputPdf = async ({
     marks,
     cropMarks,
     jobInfo,
-    font
+    font,
+    layoutConfig = {}
 }) => {
 
     const outputPdf =
@@ -2496,6 +2556,9 @@ const createOutputPdf = async ({
 
                 marks: {
                     ...marks,
+                    mode: layoutConfig?.mode,
+                    isBoxJob: layoutConfig?.mode === "BOX",
+                    boxConfig: layoutConfig?.boxConfig || marks?.boxConfig,
                     signatureIndex: layoutIdx,
                     totalSignatures: layouts.length
                 },
@@ -2653,7 +2716,16 @@ const imposePdf = async ({
                 layoutConfig.patternId,
 
             mode:
-                layoutConfig.mode
+                layoutConfig.mode,
+
+            columns:
+                layoutConfig.columns ?? layoutConfig.cols,
+
+            rows:
+                layoutConfig.rows,
+
+            interlockMode:
+                layoutConfig.interlockMode
 
         });
     if (
@@ -2738,7 +2810,10 @@ const imposePdf = async ({
             workStyle,
 
             pageRotation:
-                layoutConfig.pageRotation || 0
+                layoutConfig.pageRotation || 0,
+
+            boxConfig:
+                layoutConfig.boxConfig
 
         });
 
@@ -2763,7 +2838,10 @@ const imposePdf = async ({
         sourcePageCount:
             source.pageCount,
 
-        sheet
+        sheet,
+
+        mode:
+            layoutConfig.mode || pattern?.mode
 
     });
 
@@ -2801,7 +2879,9 @@ const imposePdf = async ({
 
             jobInfo,
 
-            font
+            font,
+
+            layoutConfig
 
         });
 

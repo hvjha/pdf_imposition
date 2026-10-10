@@ -112,7 +112,10 @@ const normalizeRotation = (
 const resolveFoldPattern = ({
     pagesPerLayout,
     patternId = null,
-    mode = null
+    mode = null,
+    columns = null,
+    rows = null,
+    interlockMode = "STANDARD"
 }) => {
 
     const pattern =
@@ -122,7 +125,13 @@ const resolveFoldPattern = ({
 
             patternId,
 
-            mode
+            mode,
+
+            columns,
+
+            rows,
+
+            interlockMode
 
         });
 
@@ -320,6 +329,7 @@ const validateFoldPattern = (
      * -------------------------------------------------------- */
 
     if (
+        pattern.mode !== "BOX" &&
         front.length +
         back.length !==
         pattern.pages
