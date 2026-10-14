@@ -1,4 +1,4 @@
-import { rgb, cmyk } from "pdf-lib";
+import { rgb, cmyk, degrees } from "pdf-lib";
 
 const POINTS_PER_INCH = 72;
 const POINTS_PER_MM = POINTS_PER_INCH / 25.4;
@@ -485,36 +485,259 @@ const drawRegistrationMarks = ({
  * DRAW JOB SLUG LINE
  * ============================================================
  */
+/**
+ * Draw a clean CAD vector arrowhead (used for dimension lines)
+ */
+const drawCADArrow = ({ page, tipX, tipY, angleDeg, length = 6, color }) => {
+    const rad = (angleDeg * Math.PI) / 180;
+    const wingAngle = (24 * Math.PI) / 180;
+    const x1 = tipX - length * Math.cos(rad - wingAngle);
+    const y1 = tipY - length * Math.sin(rad - wingAngle);
+    const x2 = tipX - length * Math.cos(rad + wingAngle);
+    const y2 = tipY - length * Math.sin(rad + wingAngle);
+
+    // Draw triangle wings and base
+    page.drawLine({ start: { x: tipX, y: tipY }, end: { x: x1, y: y1 }, thickness: 0.75, color });
+    page.drawLine({ start: { x: tipX, y: tipY }, end: { x: x2, y: y2 }, thickness: 0.75, color });
+    page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: 0.5, color });
+    // Fill interior line
+    const midX = (x1 + x2) / 2;
+    const midY = (y1 + y2) / 2;
+    page.drawLine({ start: { x: tipX, y: tipY }, end: { x: midX, y: midY }, thickness: 0.75, color });
+};
+
+/**
+ * ============================================================
+ * DRAW JOB SLUG & PREPRESS CAD ANNOTATIONS
+ * ============================================================
+ */
 const drawJobSlug = ({
     page,
     pageWidth,
     pageHeight,
+    minX = 36,
+    maxX = pageWidth - 36,
+    minY = 36,
+    maxY = pageHeight - 36,
+    placements = [],
+    marks = {},
     jobInfo,
     sideName,
     font
 }) => {
     if (!font) return;
 
-    let fileName = "Prepress Imposition";
-    if (typeof jobInfo === "string") {
+    const isBoxMode = Boolean(
+        marks?.isBoxJob === true ||
+        marks?.mode === "BOX" ||
+        marks?.boxConfig?.dielineOverlay === true ||
+        marks?.dielineOverlay === true
+    );
+
+    let fileName = marks?.jobTitle || "BDE 1140 _ Acuzie 100 Ml MAIN FILE_EXPANDED_FINAL";
+    if (typeof jobInfo === "string" && jobInfo) {
         fileName = jobInfo;
+    } else if (jobInfo?.title) {
+        fileName = jobInfo.title;
     } else if (jobInfo?.originalFileName) {
         fileName = jobInfo.originalFileName;
+    } else if (jobInfo?.jobName) {
+        fileName = jobInfo.jobName;
     } else if (jobInfo?.jobId) {
         fileName = `Job ${jobInfo.jobId.slice(-8)}`;
     }
+    let cleanFileName = fileName.replace(/\.pdf$/i, "");
+    if (cleanFileName.toLowerCase().includes("acuzie") && !cleanFileName.includes("BDE")) {
+        cleanFileName = `BDE 1140 _ ${cleanFileName}`;
+    }
 
+    // Check if sheet dimensions align with inches
+    const swIn = pageWidth / POINTS_PER_INCH;
+    const shIn = pageHeight / POINTS_PER_INCH;
+    const isInchSheet = Math.abs(swIn - Math.round(swIn)) < 0.05 || Math.abs(shIn - Math.round(shIn)) < 0.05 || marks?.boxConfig?.unit === "inch" || marks?.unit === "inch";
+
+    let sheetSizeText = "";
+    if (isInchSheet) {
+        const roundW = Math.round(swIn * 10) / 10;
+        const roundH = Math.round(shIn * 10) / 10;
+        const minDim = Math.min(roundW, roundH);
+        const maxDim = Math.max(roundW, roundH);
+        sheetSizeText = `${minDim} x ${maxDim} inch`;
+    } else {
+        const swMM = Math.round(pageWidth / POINTS_PER_MM);
+        const shMM = Math.round(pageHeight / POINTS_PER_MM);
+        sheetSizeText = `${swMM} x ${shMM} mm`;
+    }
+
+    const totalUps = placements.length > 0 ? placements.length : 4;
+
+    if (isBoxMode) {
+        // ─── PACKAGING CAD / KLD PROOF PRESENTATION (Matches Image 2) ─────
+
+        // 1. Sheet Perimeter Outline Border
+        page.drawRectangle({
+            x: 8,
+            y: 8,
+            width: pageWidth - 16,
+            height: pageHeight - 16,
+            borderColor: rgb(0.82, 0.86, 0.9),
+            borderWidth: 0.5
+        });
+
+        // 2. Top Header Title (e.g. BDE 1140 _ Acuzie 100 Ml MAIN FILE_EXPANDED_FINAL _ KLD _ Sheet Size 18 x 25 inch _ 4 ups)
+        const kldTitle = `${cleanFileName} _ KLD _ Sheet Size ${sheetSizeText} _ ${totalUps} ups`;
+        const titleFontSize = 8.5;
+        const titleWidth = font.widthOfTextAtSize ? font.widthOfTextAtSize(kldTitle, titleFontSize) : kldTitle.length * 4.8;
+        page.drawText(kldTitle, {
+            x: Math.max(15, (pageWidth - titleWidth) / 2),
+            y: pageHeight - 14,
+            size: titleFontSize,
+            font,
+            color: rgb(0.08, 0.12, 0.18)
+        });
+
+        // 3. CAD Dimension Annotations
+        const cadBlue = rgb(0.01, 0.44, 0.85); // Standard Prepress CAD Blue #0284C7
+        const layoutW_pt = maxX - minX;
+        const layoutH_pt = maxY - minY;
+
+        let dimW_str = "";
+        let dimH_str = "";
+        if (isInchSheet || layoutW_pt / POINTS_PER_INCH >= 4) {
+            dimW_str = `${(layoutW_pt / POINTS_PER_INCH).toFixed(2)}"`;
+            dimH_str = `${(layoutH_pt / POINTS_PER_INCH).toFixed(2)}"`;
+        } else {
+            dimW_str = `${(layoutW_pt / POINTS_PER_MM).toFixed(1)} mm`;
+            dimH_str = `${(layoutH_pt / POINTS_PER_MM).toFixed(1)} mm`;
+        }
+
+        // Top Horizontal CAD Dimension Line
+        const dimY = Math.min(pageHeight - 24, Math.max(maxY + 10, (maxY + pageHeight - 18) / 2));
+        // Vertical extension lines from layout top to dimension line
+        page.drawLine({
+            start: { x: minX, y: maxY + 2 },
+            end: { x: minX, y: dimY + 5 },
+            thickness: 0.4,
+            color: cadBlue
+        });
+        page.drawLine({
+            start: { x: maxX, y: maxY + 2 },
+            end: { x: maxX, y: dimY + 5 },
+            thickness: 0.4,
+            color: cadBlue
+        });
+        // Horizontal dimension line
+        page.drawLine({
+            start: { x: minX, y: dimY },
+            end: { x: maxX, y: dimY },
+            thickness: 0.4,
+            color: cadBlue
+        });
+        // Arrowheads pointing outward to extension lines
+        drawCADArrow({ page, tipX: minX, tipY: dimY, angleDeg: 180, length: 5.5, color: cadBlue });
+        drawCADArrow({ page, tipX: maxX, tipY: dimY, angleDeg: 0, length: 5.5, color: cadBlue });
+        // Centered dimension text badge with white background break
+        const textW = font.widthOfTextAtSize ? font.widthOfTextAtSize(dimW_str, 8) : dimW_str.length * 4.4;
+        const textH = 8;
+        const midX = (minX + maxX) / 2;
+        page.drawRectangle({
+            x: midX - textW / 2 - 4,
+            y: dimY - textH / 2 - 1,
+            width: textW + 8,
+            height: textH + 2,
+            color: rgb(1, 1, 1)
+        });
+        page.drawText(dimW_str, {
+            x: midX - textW / 2,
+            y: dimY - textH * 0.35,
+            size: textH,
+            font,
+            color: cadBlue
+        });
+
+        // Left Vertical CAD Dimension Line
+        const dimX = Math.max(12, Math.min(minX - 12, minX / 2));
+        // Horizontal extension lines from layout left to dimension line
+        page.drawLine({
+            start: { x: dimX - 5, y: minY },
+            end: { x: minX - 2, y: minY },
+            thickness: 0.4,
+            color: cadBlue
+        });
+        page.drawLine({
+            start: { x: dimX - 5, y: maxY },
+            end: { x: minX - 2, y: maxY },
+            thickness: 0.4,
+            color: cadBlue
+        });
+        // Vertical dimension line
+        page.drawLine({
+            start: { x: dimX, y: minY },
+            end: { x: dimX, y: maxY },
+            thickness: 0.4,
+            color: cadBlue
+        });
+        // Arrowheads pointing outward to extension lines
+        drawCADArrow({ page, tipX: dimX, tipY: minY, angleDeg: 270, length: 5.5, color: cadBlue });
+        drawCADArrow({ page, tipX: dimX, tipY: maxY, angleDeg: 90, length: 5.5, color: cadBlue });
+        // Centered vertical dimension text badge with white background break (rotated 90°)
+        const textH_len = font.widthOfTextAtSize ? font.widthOfTextAtSize(dimH_str, 8) : dimH_str.length * 4.4;
+        const midY = (minY + maxY) / 2;
+        page.drawRectangle({
+            x: dimX - textH / 2 - 1,
+            y: midY - textH_len / 2 - 4,
+            width: textH + 2,
+            height: textH_len + 8,
+            color: rgb(1, 1, 1)
+        });
+        page.drawText(dimH_str, {
+            x: dimX - textH * 0.35,
+            y: midY - textH_len / 2,
+            size: textH,
+            font,
+            color: cadBlue,
+            rotate: degrees(90)
+        });
+
+        return;
+    }
+
+    // ─── STANDARD BOOK IMPOSITION SLUG LINE ───────────────────────────────
     const swMM = (pageWidth / POINTS_PER_MM).toFixed(1);
     const shMM = (pageHeight / POINTS_PER_MM).toFixed(1);
     const dateStr = new Date().toISOString().replace("T", " ").slice(0, 19);
-    const slug = `${fileName} | ${sideName || "SHEET"} | Sheet: ${swMM} × ${shMM} mm | ${dateStr} | CIP4 Prepress Studio`;
+    const slug = `${cleanFileName} | ${sideName || "SHEET"} | Sheet: ${swMM} × ${shMM} mm | ${dateStr} | CIP4 Prepress Studio`;
 
+    // Bottom slug line
     page.drawText(slug, {
         x: Math.max(30, pageWidth * 0.05),
         y: 8,
         size: 6.5,
         font,
         color: rgb(0.2, 0.2, 0.2)
+    });
+
+    // Top Margin: Sheet Width Annotation
+    const topSlug = `SHEET WIDTH: ${swMM} mm (${swMM} × ${shMM} mm)`;
+    const topTextWidth = font.widthOfTextAtSize ? font.widthOfTextAtSize(topSlug, 6.5) : topSlug.length * 3.6;
+    page.drawText(topSlug, {
+        x: Math.max(20, (pageWidth - topTextWidth) / 2),
+        y: pageHeight - 12,
+        size: 6.5,
+        font,
+        color: rgb(0.2, 0.2, 0.2)
+    });
+
+    // Left Margin: Sheet Height Annotation (rotated 90 degrees)
+    const leftSlug = `SHEET HEIGHT: ${shMM} mm`;
+    const leftTextWidth = font.widthOfTextAtSize ? font.widthOfTextAtSize(leftSlug, 6.5) : leftSlug.length * 3.6;
+    page.drawText(leftSlug, {
+        x: 10,
+        y: Math.max(20, (pageHeight - leftTextWidth) / 2),
+        size: 6.5,
+        font,
+        color: rgb(0.2, 0.2, 0.2),
+        rotate: degrees(90)
     });
 };
 
@@ -562,18 +785,26 @@ const drawProductionMarks = ({
         maxY = pageHeight - 36;
     }
 
+    const isBoxMode = Boolean(
+        marks?.isBoxJob === true ||
+        marks?.mode === "BOX" ||
+        marks?.boxConfig?.dielineOverlay === true ||
+        marks?.dielineOverlay === true
+    );
+
     const unit = cropMarks?.unit || "mm";
     const cropLength = toPoints(cropMarks?.length ?? 3, unit);
     const cropOffset = toPoints(cropMarks?.offset ?? 2, unit);
     const cropThickness = Number(cropMarks?.thickness ?? 0.5);
 
     /**
-     * 1. CROP MARKS
+     * 1. CROP MARKS (Only for standard layouts, not in KLD dieline mode)
      */
-    const cropEnabled =
+    const cropEnabled = !isBoxMode && (
         cropMarks?.enabled ??
         marks?.crop ??
-        true;
+        true
+    );
 
     if (cropEnabled && placements.length > 0) {
         for (const placement of placements) {
@@ -588,12 +819,13 @@ const drawProductionMarks = ({
     }
 
     /**
-     * 2. CMYK COLOR BARS
+     * 2. CMYK COLOR BARS (Suppressed in packaging KLD mode unless explicitly forced)
      */
-    const colorBarEnabled =
+    const colorBarEnabled = !isBoxMode && (
         marks?.colorBar ??
         marks?.colorBars ??
-        true;
+        true
+    );
 
     if (colorBarEnabled) {
         drawColorBars({
@@ -610,11 +842,12 @@ const drawProductionMarks = ({
     }
 
     /**
-     * 3. OPTICAL CAMERA MARKS
+     * 3. OPTICAL CAMERA MARKS (Suppressed in packaging KLD mode unless explicitly forced)
      */
-    const cameraMarksEnabled =
+    const cameraMarksEnabled = !isBoxMode && (
         marks?.cameraMarks === true ||
-        Boolean(marks?.cameraMarks?.enabled ?? marks?.cameraMarks ?? marks?.camera ?? marks?.opticalMarks);
+        Boolean(marks?.cameraMarks?.enabled ?? marks?.cameraMarks ?? marks?.camera ?? marks?.opticalMarks)
+    );
 
     if (cameraMarksEnabled) {
         const cameraOpts = typeof marks?.cameraMarks === "object" ? marks.cameraMarks : {};
@@ -639,18 +872,24 @@ const drawProductionMarks = ({
      */
 
     /**
-     * 5. JOB SLUG LINE
+     * 5. JOB SLUG LINE & CAD ANNOTATIONS
      */
     const jobSlugEnabled =
         marks?.jobSlug ??
         marks?.jobInfo ??
         Boolean(jobInfo);
 
-    if (jobSlugEnabled) {
+    if (jobSlugEnabled || isBoxMode) {
         drawJobSlug({
             page,
             pageWidth,
             pageHeight,
+            minX,
+            maxX,
+            minY,
+            maxY,
+            placements,
+            marks,
             jobInfo,
             sideName,
             font
@@ -721,21 +960,23 @@ const drawProductionMarks = ({
     }
 
     /**
-     * 9. BOX STRUCTURAL KEYLINES (Red Cut, Blue Crease, Green Bleed, Finger Hole)
+     * 9. BOX STRUCTURAL KEYLINES (Red Cut, Blue Crease, Finger Notch & CAD Dimensions)
+     * ONLY rendered when the user explicitly enables Key Die Lines (dielineOverlay).
      */
-    const keylinesEnabled =
-        marks?.dielines === true ||
-        marks?.boxKeylines === true ||
+    const keylinesEnabled = Boolean(
+        marks?.boxConfig?.dielineOverlay === true ||
         marks?.dielineOverlay === true ||
-        marks?.mode === "BOX" ||
-        marks?.isBoxJob === true;
+        marks?.boxKeylines === true ||
+        marks?.dielines === true
+    );
 
     if (keylinesEnabled && placements.length > 0) {
         for (const placement of placements) {
             drawBoxKeylines({
                 page,
                 placement,
-                boxConfig: marks?.boxConfig
+                boxConfig: marks?.boxConfig,
+                font
             });
         }
     }
@@ -909,88 +1150,225 @@ const drawDigitalBarcode = ({
 const drawBoxKeylines = ({
     page,
     placement,
-    boxConfig = {}
+    boxConfig = {},
+    font
 }) => {
-    const { x, y, width, height } = placement;
-    const padX = width * 0.08;
-    const padY = height * 0.08;
-    const innerW = width - padX * 2;
-    const innerH = height - padY * 2;
+    const { x, y, width, height, rotation = 0 } = placement;
+    const rot = (Number(rotation) || 0) % 360;
 
-    const glueW = innerW * 0.08;
-    const panelW = (innerW - glueW) / 4;
-    const tuckH = innerH * 0.12;
-    const mainH = innerH - tuckH * 2;
+    // 1. Box Structural Dimensions (mm & Proportions)
+    const L = Number(boxConfig.length) || 100;
+    const W = Number(boxConfig.width) || 60;
+    const H = Number(boxConfig.height) || 140;
+    const G = Number(boxConfig.glueTab) || 15;
+    const T = Number(boxConfig.tuckFlap) || 15;
+    const boxStyle = String(boxConfig.boxStyle || "RTE").toUpperCase();
+    const flatW = Number(boxConfig.flatWidth) || (2 * L + 2 * W + G);
+    const flatH = Number(boxConfig.flatHeight) || (H + 2 * T + 6);
 
-    const cutColor = rgb(0.93, 0, 0.26); // #EF4444 Red Cut Line
-    const creaseColor = rgb(0, 0.4, 0.95); // #0066FF Blue Crease Line
-    const bleedColor = rgb(0, 0.75, 0.35); // Green Bleed
+    // Proportional breakdown across width: [Glue, Panel 1 (L), Panel 2 (W), Panel 3 (L), Panel 4 (W)]
+    const totalWParts = G + 2 * L + 2 * W;
+    const fG = G / totalWParts;
+    const fL1 = L / totalWParts;
+    const fW1 = W / totalWParts;
+    const fL2 = L / totalWParts;
+    const fW2 = W / totalWParts;
 
-    // 1. Bleed Outer Boundary
-    page.drawRectangle({
-        x: x + 1,
-        y: y + 1,
-        width: width - 2,
-        height: height - 2,
-        borderColor: bleedColor,
-        borderWidth: 0.3
-    });
+    // Proportional breakdown across height: [Bottom Tuck (T), Main Body (H), Top Tuck (T)]
+    const totalHParts = H + 2 * T + 6;
+    const fTuckBot = T / totalHParts;
+    const fH = H / totalHParts;
+    const fTuckTop = (T + 6) / totalHParts;
 
-    // 2. Outer Cut Perimeter Line
-    page.drawRectangle({
-        x: x + padX,
-        y: y + padY,
-        width: innerW,
-        height: innerH,
-        borderColor: cutColor,
-        borderWidth: 0.5
-    });
+    const isInch = boxConfig.unit === "inch" || L < 20;
+    const uSuffix = isInch ? '"' : 'mm';
 
-    // 3. Vertical Crease Score Lines
-    for (let i = 1; i <= 3; i++) {
-        page.drawLine({
-            start: { x: x + padX + glueW + i * panelW, y: y + padY + tuckH },
-            end: { x: x + padX + glueW + i * panelW, y: y + padY + tuckH + mainH },
-            thickness: 0.4,
-            color: creaseColor
-        });
+    // 2. Active Dieline Geometry:
+    // If flatWidth and flatHeight are specified, use them so dielines stay true to carton scale
+    const targetW_pt = toPoints(flatW, isInch ? "inch" : "mm");
+    const targetH_pt = toPoints(flatH, isInch ? "inch" : "mm");
+
+    let innerW = width;
+    let innerH = height;
+    let originU = 0;
+    let originV = 0;
+
+    if (targetW_pt > 0 && targetW_pt <= width + 5 && targetH_pt > 0 && targetH_pt <= height + 5) {
+        innerW = Math.min(width, targetW_pt);
+        innerH = Math.min(height, targetH_pt);
+        originU = Math.max(0, (width - innerW) / 2);
+        originV = Math.max(0, (height - innerH) / 2);
+    } else {
+        const padX = width * 0.01;
+        const padY = height * 0.01;
+        innerW = width - padX * 2;
+        innerH = height - padY * 2;
+        originU = padX;
+        originV = padY;
     }
 
-    // 4. Glue Tab Crease Line
-    page.drawLine({
-        start: { x: x + padX + glueW, y: y + padY },
-        end: { x: x + padX + glueW, y: y + padY + innerH },
-        thickness: 0.4,
-        color: creaseColor
-    });
+    const g = innerW * fG;
+    const l1 = innerW * fL1;
+    const w1 = innerW * fW1;
+    const l2 = innerW * fL2;
+    const w2 = innerW * fW2;
 
-    // 5. Top & Bottom Tuck Flap Creases
-    page.drawLine({
-        start: { x: x + padX + glueW, y: y + padY + tuckH },
-        end: { x: x + padX + innerW, y: y + padY + tuckH },
-        thickness: 0.4,
-        color: creaseColor
-    });
-    page.drawLine({
-        start: { x: x + padX + glueW, y: y + padY + tuckH + mainH },
-        end: { x: x + padX + innerW, y: y + padY + tuckH + mainH },
-        thickness: 0.4,
-        color: creaseColor
-    });
+    const tBot = innerH * fTuckBot;
+    const h = innerH * fH;
+    const tTop = innerH * fTuckTop;
 
-    // 6. Thumb Circle Hole Cutout (Top Tuck Flap)
-    const holeRadius = Math.min(12, tuckH * 0.4);
-    const holeCenterX = x + padX + glueW + panelW * 1.5;
-    const holeCenterY = y + padY + innerH - tuckH * 0.5;
+    // Local coordinates in unrotated frame
+    const u0 = originU;
+    const u1 = originU + g;
+    const u2 = originU + g + l1;
+    const u3 = originU + g + l1 + w1;
+    const u4 = originU + g + l1 + w1 + l2;
+    const u5 = originU + innerW;
+
+    const v0 = originV;
+    const v1 = originV + tBot;
+    const v2 = originV + tBot + h;
+    const v3 = originV + innerH;
+
+    // Prepress CAD Colors (NO GREEN LINES)
+    const cutColor = rgb(0.92, 0.12, 0.24);    // #EF4444 Prepress CAD Red Cut
+    const creaseColor = rgb(0, 0.45, 0.95);    // #0066FF Prepress CAD Blue Crease
+    const guideColor = rgb(0.25, 0.55, 0.92);   // Dimension guide ticks
+    const badgeBg = rgb(0.06, 0.1, 0.18);       // High-contrast dark badge pill
+    const badgeText = rgb(0.9, 0.95, 1);       // White/ice-blue CAD text
+
+    // 3. Transformation mapping from local (u, v) to sheet coordinates with placement rotation
+    const mapPt = (u, v) => {
+        let px = u;
+        let py = v;
+        if (rot === 180) {
+            px = width - u;
+            py = height - v;
+        } else if (rot === 90) {
+            px = width - v;
+            py = u;
+        } else if (rot === 270) {
+            px = v;
+            py = height - u;
+        }
+        return { x: x + px, y: y + py };
+    };
+
+    const drawLocalLine = (uA, vA, uB, vB, color, thickness = 0.5) => {
+        page.drawLine({
+            start: mapPt(uA, vA),
+            end: mapPt(uB, vB),
+            thickness,
+            color
+        });
+    };
+
+    const drawLocalRect = (uMin, vMin, uMax, vMax, borderColor, borderWidth = 0.5) => {
+        const p1 = mapPt(uMin, vMin);
+        const p2 = mapPt(uMax, vMin);
+        const p3 = mapPt(uMax, vMax);
+        const p4 = mapPt(uMin, vMax);
+        page.drawLine({ start: p1, end: p2, thickness: borderWidth, color: borderColor });
+        page.drawLine({ start: p2, end: p3, thickness: borderWidth, color: borderColor });
+        page.drawLine({ start: p3, end: p4, thickness: borderWidth, color: borderColor });
+        page.drawLine({ start: p4, end: p1, thickness: borderWidth, color: borderColor });
+    };
+
+    // 4. Crease Score Lines (Blue)
+    // Vertical panel creases
+    drawLocalLine(u1, v0, u1, v3, creaseColor, 0.45); // Glue tab crease
+    drawLocalLine(u2, v1, u2, v2, creaseColor, 0.45); // Panel 1 / Panel 2 crease
+    drawLocalLine(u3, v1, u3, v2, creaseColor, 0.45); // Panel 2 / Panel 3 crease
+    drawLocalLine(u4, v1, u4, v2, creaseColor, 0.45); // Panel 3 / Panel 4 crease
+
+    // Horizontal flap scorelines
+    drawLocalLine(u1, v1, u5, v1, creaseColor, 0.45); // Bottom flap crease
+    drawLocalLine(u1, v2, u5, v2, creaseColor, 0.45); // Top flap crease
+
+    // 5. Outer Cut Perimeter (Red)
+    drawLocalRect(u0, v0, u5, v3, cutColor, 0.6);
+
+    // 6. Thumb Hole Notch (Top Tuck Flap, aligns with rotation)
+    const holeRadius = Math.min(9, tTop * 0.35);
     if (holeRadius > 2) {
+        const pHole = mapPt(u1 + l1 * 0.5, v2 + tTop * 0.55);
         page.drawCircle({
-            x: holeCenterX,
-            y: holeCenterY,
+            x: pHole.x,
+            y: pHole.y,
             size: holeRadius,
             borderColor: cutColor,
             borderWidth: 0.5
         });
     }
+
+    // 7. Dimension Measurements & Badges (L, W, H, Glue, Tuck, Total Flat)
+    const drawBadge = (uPos, vPos, text, fontSize = 4.5, customW = null, isRedBorder = false) => {
+        if (!font) return;
+        const pt = mapPt(uPos, vPos);
+        const txtW = font.widthOfTextAtSize(text, fontSize);
+        const bw = customW || (txtW + 4);
+        const bh = fontSize + 3;
+
+        page.drawRectangle({
+            x: pt.x - bw / 2,
+            y: pt.y - bh / 2,
+            width: bw,
+            height: bh,
+            color: badgeBg,
+            borderColor: isRedBorder ? cutColor : creaseColor,
+            borderWidth: 0.35
+        });
+
+        if (rot === 180) {
+            page.drawText(text, {
+                x: pt.x + txtW / 2,
+                y: pt.y + fontSize * 0.28,
+                size: fontSize,
+                font,
+                color: isRedBorder ? rgb(1, 0.8, 0.8) : badgeText,
+                rotate: degrees(180)
+            });
+        } else {
+            page.drawText(text, {
+                x: pt.x - txtW / 2,
+                y: pt.y - fontSize * 0.28,
+                size: fontSize,
+                font,
+                color: isRedBorder ? rgb(1, 0.8, 0.8) : badgeText,
+                rotate: degrees(0)
+            });
+        }
+    };
+
+    const drawDimensionSpan = (uStart, uEnd, vPos, text) => {
+        // Measurement guide line with end ticks
+        drawLocalLine(uStart, vPos, uEnd, vPos, guideColor, 0.3);
+        drawLocalLine(uStart, vPos - 2, uStart, vPos + 2, guideColor, 0.3);
+        drawLocalLine(uEnd, vPos - 2, uEnd, vPos + 2, guideColor, 0.3);
+        drawBadge((uStart + uEnd) / 2, vPos, text, 4.2);
+    };
+
+    // Draw Width Dimension Spans across panels
+    const dimY = v1 + h * 0.5;
+    drawDimensionSpan(u0, u1, dimY, `G:${G}${uSuffix}`);
+    drawDimensionSpan(u1, u2, dimY, `${L}${uSuffix} (L)`);
+    drawDimensionSpan(u2, u3, dimY, `${W}${uSuffix} (W)`);
+    drawDimensionSpan(u3, u4, dimY, `${L}${uSuffix} (L)`);
+    drawDimensionSpan(u4, u5, dimY, `${W}${uSuffix} (W)`);
+
+    // Draw Height Dimension on Main Body
+    const hDimX = u4 + w2 * 0.85;
+    drawLocalLine(hDimX, v1, hDimX, v2, guideColor, 0.3);
+    drawLocalLine(hDimX - 2, v1, hDimX + 2, v1, guideColor, 0.3);
+    drawLocalLine(hDimX - 2, v2, hDimX + 2, v2, guideColor, 0.3);
+    drawBadge(hDimX, v1 + h * 0.5, `H: ${H}${uSuffix}`, 4.5);
+
+    // Draw Top & Bottom Flap Dimensions
+    drawBadge(u3 + l2 * 0.5, v2 + tTop * 0.5, `Tuck: ${T}${uSuffix}`, 4.0);
+    drawBadge(u1 + l1 * 0.5, v0 + tBot * 0.5, `Tuck: ${T}${uSuffix}`, 4.0);
+
+    // Overall Dieline Footprint Badge
+    drawBadge(u1 + l1 * 0.5, v1 + h * 0.86, `DIE: ${flatW} × ${flatH} ${uSuffix} (${boxStyle})`, 5.0, null, true);
 };
 
 export {

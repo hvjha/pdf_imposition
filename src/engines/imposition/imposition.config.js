@@ -1060,18 +1060,27 @@ const normalizeImpositionConfig = (
     };
 
 
-    validateBoxValues({
+    const isBoxJob = String(input.productCategory || "").toUpperCase() === "BOX" ||
+                     String(layout.mode || "").toUpperCase() === "BOX" ||
+                     String(layout.mode || "").toUpperCase() === "PACKAGING";
 
-        name:
-            "Gutter",
-
-        values: [
-
-            normalizedGutter.horizontal,
-
-            normalizedGutter.vertical
-        ]
-    });
+    if (isBoxJob) {
+        // Packaging imposition allows negative gutters for interlocking flap nesting down to -200mm
+        const invalid = [normalizedGutter.horizontal, normalizedGutter.vertical].some(
+            v => !Number.isFinite(v) || v < -200
+        );
+        if (invalid) {
+            throw new Error("Gutter values must be valid numbers (down to -200mm for packaging flap nesting).");
+        }
+    } else {
+        validateBoxValues({
+            name: "Gutter",
+            values: [
+                normalizedGutter.horizontal,
+                normalizedGutter.vertical
+            ]
+        });
+    }
 
 
     /**

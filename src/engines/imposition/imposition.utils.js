@@ -1,3 +1,5 @@
+import zlib from "zlib";
+
 const POINTS_PER_INCH = 72;
 
 const MM_PER_INCH = 25.4;
@@ -339,6 +341,143 @@ const isPlacementInsideSheet = (
 };
 
 
+/**
+ * Detect the content bounding box (non-empty painted paths, images, and rectangles)
+ * of a PDF page by scanning its content streams.
+ * Returns margins from mediaBox in millimeters: { leftMM, bottomMM, rightMM, topMM, widthMM, heightMM }
+ */
+const detectContentBoundingBox = (page) => {
+    if (!page || !page.node) return null;
+    const mediaBox = page.getMediaBox();
+
+    // 1. First priority: Check ArtBox (Adobe Illustrator / CAD prepress standard for dieline artwork bounds)
+    const artBox = page.getArtBox ? page.getArtBox() : null;
+    if (artBox && (artBox.width < mediaBox.width - 2 || artBox.height < mediaBox.height - 2)) {
+        const leftMM = Math.max(0, Math.round(((artBox.x - mediaBox.x) * 25.4 / 72) * 10) / 10);
+        const bottomMM = Math.max(0, Math.round(((artBox.y - mediaBox.y) * 25.4 / 72) * 10) / 10);
+        const rightMM = Math.max(0, Math.round(((mediaBox.width - (artBox.x - mediaBox.x + artBox.width)) * 25.4 / 72) * 10) / 10);
+        const topMM = Math.max(0, Math.round(((mediaBox.height - (artBox.y - mediaBox.y + artBox.height)) * 25.4 / 72) * 10) / 10);
+        const widthMM = Math.max(0, Math.round((artBox.width * 25.4 / 72) * 10) / 10);
+        const heightMM = Math.max(0, Math.round((artBox.height * 25.4 / 72) * 10) / 10);
+        return {
+            leftMM,
+            bottomMM,
+            rightMM,
+            topMM,
+            widthMM,
+            heightMM
+        };
+    }
+
+    // 2. Second priority: Check TrimBox
+    const trimBox = page.getTrimBox ? page.getTrimBox() : null;
+    if (trimBox && (trimBox.width < mediaBox.width - 2 || trimBox.height < mediaBox.height - 2)) {
+        const leftMM = Math.max(0, Math.round(((trimBox.x - mediaBox.x) * 25.4 / 72) * 10) / 10);
+        const bottomMM = Math.max(0, Math.round(((trimBox.y - mediaBox.y) * 25.4 / 72) * 10) / 10);
+        const rightMM = Math.max(0, Math.round(((mediaBox.width - (trimBox.x - mediaBox.x + trimBox.width)) * 25.4 / 72) * 10) / 10);
+        const topMM = Math.max(0, Math.round(((mediaBox.height - (trimBox.y - mediaBox.y + trimBox.height)) * 25.4 / 72) * 10) / 10);
+        const widthMM = Math.max(0, Math.round((trimBox.width * 25.4 / 72) * 10) / 10);
+        const heightMM = Math.max(0, Math.round((trimBox.height * 25.4 / 72) * 10) / 10);
+        return {
+            leftMM,
+            bottomMM,
+            rightMM,
+            topMM,
+            widthMM,
+            heightMM
+        };
+    }
+
+    // 3. Fallback: Parse raw content stream operators
+    const contents = page.node.Contents();
+    if (!contents) return null;
+
+    const streams = Array.isArray(contents) ? contents : [contents];
+    let streamText = "";
+
+    for (const st of streams) {
+        try {
+            let bytes = st.asUint8Array ? st.asUint8Array() : null;
+            if (!bytes && st.contents) bytes = st.contents;
+            if (!bytes) continue;
+            try {
+                const decomp = zlib.inflateSync(Buffer.from(bytes));
+                streamText += decomp.toString("binary") + "\n";
+            } catch (e) {
+                streamText += Buffer.from(bytes).toString("binary") + "\n";
+            }
+        } catch (err) {}
+    }
+
+    if (!streamText) return null;
+
+    // Scan for rectangle operators: 'x y w h re'
+    const rectRegex = /([\d\.-]+)\s+([\d\.-]+)\s+([\d\.-]+)\s+([\d\.-]+)\s+re/g;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let match;
+
+    while ((match = rectRegex.exec(streamText)) !== null) {
+        const x = parseFloat(match[1]);
+        const y = parseFloat(match[2]);
+        const w = parseFloat(match[3]);
+        const h = parseFloat(match[4]);
+        if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(w) && Number.isFinite(h)) {
+            // Ignore full-page canvas background rects
+            if (w >= mediaBox.width - 2 && h >= mediaBox.height - 2) continue;
+            if (w > 0 && h > 0) {
+                minX = Math.min(minX, x, x + w);
+                minY = Math.min(minY, y, y + h);
+                maxX = Math.max(maxX, x, x + w);
+                maxY = Math.max(maxY, y, y + h);
+            }
+        }
+    }
+
+    // Also scan for path move/line operators: 'x y m' or 'x y l'
+    const pathRegex = /([\d\.-]+)\s+([\d\.-]+)\s+[ml]/g;
+    while ((match = pathRegex.exec(streamText)) !== null) {
+        const x = parseFloat(match[1]);
+        const y = parseFloat(match[2]);
+        if (Number.isFinite(x) && Number.isFinite(y)) {
+            // Ignore canvas origin resets sitting right on the outer media boundary
+            if (Math.abs(x - mediaBox.x) < 0.5 && Math.abs(y - mediaBox.y) < 0.5) continue;
+            // Only consider coordinates within or near mediaBox
+            if (x >= mediaBox.x && x <= mediaBox.x + mediaBox.width &&
+                y >= mediaBox.y && y <= mediaBox.y + mediaBox.height) {
+                minX = Math.min(minX, x);
+                minY = Math.min(minY, y);
+                maxX = Math.max(maxX, x);
+                maxY = Math.max(maxY, y);
+            }
+        }
+    }
+
+    if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+        return null;
+    }
+
+    const leftMM = Math.max(0, Math.round(((minX - mediaBox.x) * 25.4 / 72) * 10) / 10);
+    const bottomMM = Math.max(0, Math.round(((minY - mediaBox.y) * 25.4 / 72) * 10) / 10);
+    const rightMM = Math.max(0, Math.round(((mediaBox.width - (maxX - mediaBox.x)) * 25.4 / 72) * 10) / 10);
+    const topMM = Math.max(0, Math.round(((mediaBox.height - (maxY - mediaBox.y)) * 25.4 / 72) * 10) / 10);
+
+    const widthMM = Math.max(0, Math.round(((maxX - minX) * 25.4 / 72) * 10) / 10);
+    const heightMM = Math.max(0, Math.round(((maxY - minY) * 25.4 / 72) * 10) / 10);
+
+    return {
+        leftMM,
+        bottomMM,
+        rightMM,
+        topMM,
+        widthMM,
+        heightMM
+    };
+};
+
+
 export {
     POINTS_PER_INCH,
     MM_PER_INCH,
@@ -349,5 +488,6 @@ export {
     toMillimeters,
     createSheet,
     createPlacement,
-    isPlacementInsideSheet
+    isPlacementInsideSheet,
+    detectContentBoundingBox
 };

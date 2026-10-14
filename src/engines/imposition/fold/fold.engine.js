@@ -324,12 +324,18 @@ const validateFoldPattern = (
     }
 
 
+    const normalizedPatternMode = String(pattern.mode || "").trim().toUpperCase();
+    const isBox =
+        normalizedPatternMode === "BOX" ||
+        normalizedPatternMode === "PACKAGING" ||
+        (typeof pattern.id === "string" && pattern.id.trim().toUpperCase().startsWith("BOX"));
+
     /* --------------------------------------------------------
      * Total pagination count
      * -------------------------------------------------------- */
 
     if (
-        pattern.mode !== "BOX" &&
+        !isBox &&
         front.length +
         back.length !==
         pattern.pages
@@ -407,6 +413,7 @@ const validateFoldPattern = (
      * -------------------------------------------------------- */
 
     if (
+        !isBox &&
         uniquePageNumbers.size !==
         pageNumbers.length
     ) {
@@ -440,14 +447,23 @@ const validateFoldPattern = (
 
 
         if (
-            pageNumber < 1 ||
-            pageNumber > pattern.pages
+            !isBox &&
+            (pageNumber < 1 ||
+            pageNumber > pattern.pages)
         ) {
 
             throw new Error(
                 `${pattern.id}: page number ` +
                 `${pageNumber} is outside valid range ` +
                 `1-${pattern.pages}.`
+            );
+        }
+
+        if (isBox && pageNumber < 1) {
+
+            throw new Error(
+                `${pattern.id}: page number ` +
+                `${pageNumber} must be greater than or equal to 1.`
             );
         }
     }
@@ -468,22 +484,24 @@ const validateFoldPattern = (
      * --------------------------------------------------------
      */
 
-    for (
-        let pageNumber = 1;
-        pageNumber <= pattern.pages;
-        pageNumber++
-    ) {
-
-        if (
-            !uniquePageNumbers.has(
-                pageNumber
-            )
+    if (!isBox) {
+        for (
+            let pageNumber = 1;
+            pageNumber <= pattern.pages;
+            pageNumber++
         ) {
 
-            throw new Error(
-                `${pattern.id}: missing page number ` +
-                `${pageNumber}.`
-            );
+            if (
+                !uniquePageNumbers.has(
+                    pageNumber
+                )
+            ) {
+
+                throw new Error(
+                    `${pattern.id}: missing page number ` +
+                    `${pageNumber}.`
+                );
+            }
         }
     }
 

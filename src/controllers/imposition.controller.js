@@ -7,6 +7,9 @@ import {
     uploadFileToGridFS
 } from "../services/gridfs.service.js";
 
+import { PDFDocument } from "pdf-lib";
+import { detectContentBoundingBox } from "../engines/imposition/imposition.utils.js";
+
 import {
     impositionPdf
 } from "../engines/imposition/imposition.engine.js";
@@ -453,9 +456,67 @@ const imposePdf = async (
 
 
 // =====================================================
+// DETECT ARTWORK MARGINS
+// =====================================================
+
+const detectArtworkMargins = async (req, res) => {
+    try {
+        const { jobId } = req.params;
+        if (!mongoose.Types.ObjectId.isValid(jobId)) {
+            return res.status(400).json({ success: false, message: "Invalid job ID." });
+        }
+        const job = await ProductionJob.findById(jobId);
+        if (!job) {
+            return res.status(404).json({ success: false, message: "Job not found." });
+        }
+        const sourceFileId = job.productionConfig?.crop?.outputFileId || job.fileId;
+        const inputBuffer = await downloadFileFromGridFS(sourceFileId);
+        if (!inputBuffer) {
+            return res.status(404).json({ success: false, message: "Source PDF not found." });
+        }
+
+        const sourcePdf = await PDFDocument.load(inputBuffer);
+        const firstPage = sourcePdf.getPage(0);
+        const mediaBox = firstPage.getMediaBox();
+        const detected = detectContentBoundingBox(firstPage);
+
+        const sourceW_mm = Math.round(mediaBox.width * 25.4 / 72 * 10) / 10;
+        const sourceH_mm = Math.round(mediaBox.height * 25.4 / 72 * 10) / 10;
+
+        if (!detected) {
+            return res.json({
+                success: true,
+                detected: false,
+                margins: { leftMM: 0, bottomMM: 0, rightMM: 0, topMM: 0 },
+                sourceSize: { widthMM: sourceW_mm, heightMM: sourceH_mm }
+            });
+        }
+
+        const trimmedW_mm = Math.round((sourceW_mm - detected.leftMM - detected.rightMM) * 10) / 10;
+        const trimmedH_mm = Math.round((sourceH_mm - detected.topMM - detected.bottomMM) * 10) / 10;
+
+        return res.json({
+            success: true,
+            detected: true,
+            margins: detected,
+            sourceSize: { widthMM: sourceW_mm, heightMM: sourceH_mm },
+            trimmedSize: { widthMM: trimmedW_mm, heightMM: trimmedH_mm }
+        });
+    } catch (err) {
+        return res.status(500).json({
+            success: false,
+            message: "Failed to detect artwork margins.",
+            error: err.message
+        });
+    }
+};
+
+
+// =====================================================
 // EXPORT
 // =====================================================
 
 export {
-    imposePdf
+    imposePdf,
+    detectArtworkMargins
 };
