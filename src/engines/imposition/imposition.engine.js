@@ -849,6 +849,9 @@ const normalizeMarks = (
         boxConfig:
             config.boxConfig || raw.boxConfig || {},
 
+        coverStudio:
+            config.coverStudio || raw.coverStudio || null,
+
         dielineOverlay:
             Boolean(config.boxConfig?.dielineOverlay ?? raw.dielineOverlay ?? false)
 
@@ -1246,6 +1249,169 @@ const calculateScale = ({
 
 
 /* ============================================================
+ * STANDARD SHEET PRESETS & MINIMUM SHEET SELECTOR
+ * ============================================================
+ */
+
+const STANDARD_SHEET_PRESETS_PT = [
+    { name: 'A4', width: toPoints(210, 'mm'), height: toPoints(297, 'mm') },
+    { name: 'A3', width: toPoints(297, 'mm'), height: toPoints(420, 'mm') },
+    { name: 'SRA3', width: toPoints(320, 'mm'), height: toPoints(450, 'mm') },
+    { name: 'A3+', width: toPoints(329, 'mm'), height: toPoints(483, 'mm') },
+    { name: '18×25"', width: toPoints(635, 'mm'), height: toPoints(457.2, 'mm') },
+    { name: '20×26"', width: toPoints(508, 'mm'), height: toPoints(660, 'mm') },
+    { name: 'B2', width: toPoints(500, 'mm'), height: toPoints(707, 'mm') },
+    { name: '23×36"', width: toPoints(584, 'mm'), height: toPoints(914, 'mm') },
+    { name: '25×38"', width: toPoints(635, 'mm'), height: toPoints(965, 'mm') },
+    { name: '28×40"', width: toPoints(711, 'mm'), height: toPoints(1016, 'mm') },
+    { name: '30×40"', width: toPoints(762, 'mm'), height: toPoints(1016, 'mm') }
+];
+
+const findMinimumSheetPresetPt = (reqWidth, reqHeight) => {
+    const candidates = [];
+    for (const preset of STANDARD_SHEET_PRESETS_PT) {
+        if (preset.width >= reqWidth - EPSILON && preset.height >= reqHeight - EPSILON) {
+            candidates.push({
+                name: preset.name,
+                width: preset.width,
+                height: preset.height,
+                area: preset.width * preset.height,
+                orientation: preset.width >= preset.height ? 'LANDSCAPE' : 'PORTRAIT'
+            });
+        }
+        if (preset.height >= reqWidth - EPSILON && preset.width >= reqHeight - EPSILON && preset.width !== preset.height) {
+            candidates.push({
+                name: preset.name,
+                width: preset.height,
+                height: preset.width,
+                area: preset.width * preset.height,
+                orientation: preset.height >= preset.width ? 'LANDSCAPE' : 'PORTRAIT'
+            });
+        }
+    }
+    if (candidates.length > 0) {
+        candidates.sort((a, b) => {
+            if (Math.abs(a.area - b.area) > 1) {
+                return a.area - b.area;
+            }
+            return (a.width + a.height) - (b.width + b.height);
+        });
+        return candidates[0];
+    }
+    const customW = Math.ceil(reqWidth);
+    const customH = Math.ceil(reqHeight);
+    return {
+        name: 'CUSTOM',
+        width: customW,
+        height: customH,
+        area: customW * customH,
+        orientation: customW >= customH ? 'LANDSCAPE' : 'PORTRAIT'
+    };
+};
+
+/* ============================================================
+ * PREPRESS SIGNATURE MAXIMUM PAGE SIZE CALCULATOR
+ * ============================================================
+ * Calculates the maximum finished page size for a signature on a given press sheet.
+ * Based on industry-standard prepress allowances:
+ * - Long sheet dimension: 2.0 inches (50.8 mm) total margin/gripper/gutter allowance.
+ * - Short sheet dimension: 1.0 inch (25.4 mm) total margin/gripper/gutter allowance.
+ *
+ * Examples on 23×36" sheet:
+ * - 16PP (4 cols × 2 rows): 8.5" × 11" (215.9 × 279.4 mm) [US Letter]
+ * - 32PP (4 cols × 4 rows): 5.5" × 8.5" (139.7 × 215.9 mm) [US Statement / Half-Letter]
+ * - 8PP (2 cols × 2 rows): 11" × 17" (279.4 × 431.8 mm) [US Tabloid]
+ * - 4PP (2 cols × 1 row): 17" × 22" (431.8 × 558.8 mm)
+ * - 2PP (2 cols × 1 row): 17" × 22" (431.8 × 558.8 mm)
+ */
+const calculateMaxPageSizeForSignature = ({
+    sheetWidthPt,
+    sheetHeightPt,
+    pagesPerLayout = 16
+}) => {
+    const wIn = (Number(sheetWidthPt) || 0) / 72;
+    const hIn = (Number(sheetHeightPt) || 0) / 72;
+    const shortIn = Math.min(wIn, hIn);
+    const longIn = Math.max(wIn, hIn);
+
+    const longAllowanceIn = 2.0;   // Standard gripper/margins/trim on long side
+    const shortAllowanceIn = 1.0;  // Standard gripper/margins/trim on short side
+
+    const usableLongIn = Math.max(1, longIn - longAllowanceIn);
+    const usableShortIn = Math.max(1, shortIn - shortAllowanceIn);
+
+    let pageW_in = 0;
+    let pageH_in = 0;
+    let cols = 2;
+    let rows = 2;
+    let standardName = "";
+
+    const pp = Number(pagesPerLayout) || 16;
+    if (pp === 16) {
+        cols = 4;
+        rows = 2;
+        pageW_in = Math.round((usableLongIn / 4) * 100) / 100;
+        pageH_in = Math.round((usableShortIn / 2) * 100) / 100;
+        if (Math.abs(pageW_in - 8.5) < 0.15 && Math.abs(pageH_in - 11.0) < 0.15) {
+            pageW_in = 8.5;
+            pageH_in = 11.0;
+            standardName = 'US Letter (8.5 × 11")';
+        }
+    } else if (pp === 32) {
+        cols = 4;
+        rows = 4;
+        pageW_in = Math.round((usableShortIn / 4) * 100) / 100;
+        pageH_in = Math.round((usableLongIn / 4) * 100) / 100;
+        if (Math.abs(pageW_in - 5.5) < 0.15 && Math.abs(pageH_in - 8.5) < 0.15) {
+            pageW_in = 5.5;
+            pageH_in = 8.5;
+            standardName = 'US Statement / Half-Letter (5.5 × 8.5")';
+        }
+    } else if (pp === 8) {
+        cols = 2;
+        rows = 2;
+        pageW_in = Math.round((usableShortIn / 2) * 100) / 100;
+        pageH_in = Math.round((usableLongIn / 2) * 100) / 100;
+        if (Math.abs(pageW_in - 11.0) < 0.15 && Math.abs(pageH_in - 17.0) < 0.15) {
+            pageW_in = 11.0;
+            pageH_in = 17.0;
+            standardName = 'US Tabloid / Ledger (11 × 17")';
+        }
+    } else if (pp === 4 || pp === 2) {
+        cols = 2;
+        rows = 1;
+        pageW_in = Math.round((usableLongIn / 2) * 100) / 100;
+        pageH_in = Math.round((usableShortIn / 1) * 100) / 100;
+        if (Math.abs(pageW_in - 17.0) < 0.15 && Math.abs(pageH_in - 22.0) < 0.15) {
+            pageW_in = 17.0;
+            pageH_in = 22.0;
+            standardName = '17 × 22" (Folio)';
+        }
+    } else {
+        cols = Math.ceil(Math.sqrt(pp / 2));
+        rows = Math.max(1, Math.ceil((pp / 2) / cols));
+        pageW_in = Math.round((usableLongIn / cols) * 100) / 100;
+        pageH_in = Math.round((usableShortIn / rows) * 100) / 100;
+    }
+
+    const pageW_mm = Math.round((pageW_in * 25.4) * 10) / 10;
+    const pageH_mm = Math.round((pageH_in * 25.4) * 10) / 10;
+
+    return {
+        pageW_in,
+        pageH_in,
+        pageW_mm,
+        pageH_mm,
+        pageW_pt: pageW_in * 72,
+        pageH_pt: pageH_in * 72,
+        cols,
+        rows,
+        standardName: standardName || `${pageW_in}" × ${pageH_in}" (${pageW_mm} × ${pageH_mm} mm)`,
+        pages: pp
+    };
+};
+
+/* ============================================================
  * CALCULATE GEOMETRY
  * ============================================================
  */
@@ -1294,43 +1460,6 @@ const calculateGeometry = ({
 
 
     /* --------------------------------------------------------
-     * Usable sheet
-     * --------------------------------------------------------
-     */
-
-    const usableWidth =
-        sheet.width -
-        margins.left -
-        margins.right;
-
-
-    const usableHeight =
-        sheet.height -
-        margins.top -
-        margins.bottom;
-
-
-    if (
-        usableWidth <= 0
-    ) {
-
-        throw new Error(
-            "Sheet margins leave no usable width."
-        );
-    }
-
-
-    if (
-        usableHeight <= 0
-    ) {
-
-        throw new Error(
-            "Sheet margins leave no usable height."
-        );
-    }
-
-
-    /* --------------------------------------------------------
      * Gutter consumption
      * --------------------------------------------------------
      */
@@ -1351,6 +1480,47 @@ const calculateGeometry = ({
         gutter.vertical;
 
 
+    /* --------------------------------------------------------
+     * Minimum Required Sheet Size Check
+     * --------------------------------------------------------
+     * Calculate unscaled minimum required footprint for layout.
+     * If the sheet is too small (out of size), auto-select the
+     * minimum sheet size where imposition is possible.
+     */
+
+    const unscaledLayoutW = (columns * source.width) + horizontalGutter;
+    const unscaledLayoutH = (rows * source.height) + verticalGutter;
+    const minNeededSheetW = unscaledLayoutW + margins.left + margins.right;
+    const minNeededSheetH = unscaledLayoutH + margins.top + margins.bottom;
+
+    let usableWidth =
+        sheet.width -
+        margins.left -
+        margins.right;
+
+    let usableHeight =
+        sheet.height -
+        margins.top -
+        margins.bottom;
+
+    if (
+        (fitMode === "NONE" && (usableWidth < unscaledLayoutW - EPSILON || usableHeight < unscaledLayoutH - EPSILON)) ||
+        usableWidth <= 0 ||
+        usableHeight <= 0 ||
+        (usableWidth - horizontalGutter) <= 0 ||
+        (usableHeight - verticalGutter) <= 0
+    ) {
+        const bestPreset = findMinimumSheetPresetPt(minNeededSheetW, minNeededSheetH);
+        sheet.width = bestPreset.width;
+        sheet.height = bestPreset.height;
+        sheet.preset = bestPreset.name;
+        sheet.orientation = bestPreset.orientation;
+        sheet.isCustom = bestPreset.name === "CUSTOM";
+
+        usableWidth = sheet.width - margins.left - margins.right;
+        usableHeight = sheet.height - margins.top - margins.bottom;
+    }
+
     const availableWidth =
         usableWidth -
         horizontalGutter;
@@ -1361,39 +1531,17 @@ const calculateGeometry = ({
         verticalGutter;
 
 
-    if (
-        availableWidth <= 0
-    ) {
-
-        throw new Error(
-            "Horizontal gutter is too large for this sheet."
-        );
-    }
-
-
-    if (
-        availableHeight <= 0
-    ) {
-
-        throw new Error(
-            "Vertical gutter is too large for this sheet."
-        );
-    }
-
-
     /* --------------------------------------------------------
      * Grid cell
      * --------------------------------------------------------
      */
 
     const cellWidth =
-        availableWidth /
-        columns;
+        Math.max(1, availableWidth / columns);
 
 
     const cellHeight =
-        availableHeight /
-        rows;
+        Math.max(1, availableHeight / rows);
 
 
     /* --------------------------------------------------------
@@ -1464,37 +1612,31 @@ const calculateGeometry = ({
 
 
     /* --------------------------------------------------------
-     * Center complete layout
+     * Center complete layout & Auto-Expand if needed
      * --------------------------------------------------------
      */
 
-    const freeWidth =
+    let freeWidth =
         usableWidth -
         layoutWidth;
 
 
-    const freeHeight =
+    let freeHeight =
         usableHeight -
         layoutHeight;
 
 
-    if (
-        freeWidth < -EPSILON
-    ) {
-
-        throw new Error(
-            "Imposition layout exceeds usable sheet width."
-        );
+    if (freeWidth < -EPSILON) {
+        sheet.width = Math.ceil(layoutWidth + margins.left + margins.right);
+        usableWidth = sheet.width - margins.left - margins.right;
+        freeWidth = Math.max(0, usableWidth - layoutWidth);
     }
 
 
-    if (
-        freeHeight < -EPSILON
-    ) {
-
-        throw new Error(
-            "Imposition layout exceeds usable sheet height."
-        );
+    if (freeHeight < -EPSILON) {
+        sheet.height = Math.ceil(layoutHeight + margins.top + margins.bottom);
+        usableHeight = sheet.height - margins.top - margins.bottom;
+        freeHeight = Math.max(0, usableHeight - layoutHeight);
     }
 
 
@@ -2582,6 +2724,7 @@ const createOutputPdf = async ({
                     mode: layoutConfig?.mode || marks?.mode,
                     isBoxJob: Boolean(layoutConfig?.mode === "BOX" || marks?.isBoxJob || marks?.mode === "BOX"),
                     boxConfig: layoutConfig?.boxConfig || marks?.boxConfig,
+                    coverStudio: layoutConfig?.coverStudio || marks?.coverStudio || null,
                     dielineOverlay: layoutConfig?.boxConfig?.dielineOverlay ?? marks?.dielineOverlay ?? false,
                     signatureIndex: layoutIdx,
                     totalSignatures: layouts.length
@@ -2842,8 +2985,25 @@ const imposePdf = async ({
         const effectiveCrop = firstPage.getCropBox();
         source.width = effectiveCrop.width;
         source.height = effectiveCrop.height;
+
+        // Apply 0.25 mm margin in between boxes after trim if not explicitly specified
+        if (isBoxJob) {
+            const dieGapPt = toPoints(0.25, 'mm');
+            if (normalizedConfig.gutter.horizontal === 0 && boxCfg.gutterX === undefined) {
+                normalizedConfig.gutter.horizontal = dieGapPt;
+            }
+            if (normalizedConfig.gutter.vertical === 0 && boxCfg.gutterY === undefined) {
+                normalizedConfig.gutter.vertical = dieGapPt;
+            }
+        }
     }
 
+    // For book text/cover jobs, if a target book trim size is specified (and not AUTO),
+    // update source dimensions so calculateGeometry and minimum sheet selection use the target page size!
+    if (!isBoxJob && normalizedConfig.bookSize && normalizedConfig.bookSize.width > 0 && normalizedConfig.bookSize.height > 0 && normalizedConfig.bookSize.preset !== "AUTO") {
+        source.width = normalizedConfig.bookSize.width;
+        source.height = normalizedConfig.bookSize.height;
+    }
 
     /* --------------------------------------------------------
      * GEOMETRY
@@ -3031,7 +3191,10 @@ const imposePdf = async ({
                 sheet.height,
 
             unit:
-                sheet.unit
+                sheet.unit,
+
+            preset:
+                sheet.preset || null
 
         },
 
@@ -3133,6 +3296,10 @@ export {
 
     validateAllPhysicalLayouts,
 
-    createOutputPdf
+    createOutputPdf,
+
+    calculateMaxPageSizeForSignature,
+
+    findMinimumSheetPresetPt
 
 };

@@ -97,6 +97,9 @@ const uploadFileToGridFS = (buffer, filename, mimetype, metadata = {}) => {
                             contentType: mimetype,
                             metadata: { originalName: filename, ...metadata }
                         });
+                        uploadStream.on("error", (err) => {
+                            console.warn(`[GRIDFS BACKGROUND BACKUP] Storage sync note: ${err.message}`);
+                        });
                         uploadStream.end(buffer);
                     }
                 } catch (bgErr) {
@@ -147,6 +150,9 @@ const uploadFileStreamToGridFS = (filePath, filename, mimetype, metadata = {}) =
                         const uploadStream = gridfsBucket.openUploadStreamWithId(fileId, filename, {
                             contentType: mimetype,
                             metadata: { originalName: filename, ...metadata }
+                        });
+                        uploadStream.on("error", (err) => {
+                            console.warn(`[GRIDFS BG SYNC] Stream error note: ${err.message}`);
                         });
                         fs.createReadStream(localDest).pipe(uploadStream)
                             .on("error", (err) => console.warn(`[GRIDFS BG SYNC] Note: ${err.message}`))

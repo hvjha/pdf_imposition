@@ -529,9 +529,7 @@ const drawJobSlug = ({
 
     const isBoxMode = Boolean(
         marks?.isBoxJob === true ||
-        marks?.mode === "BOX" ||
-        marks?.boxConfig?.dielineOverlay === true ||
-        marks?.dielineOverlay === true
+        marks?.mode === "BOX"
     );
 
     let fileName = marks?.jobTitle || "BDE 1140 _ Acuzie 100 Ml MAIN FILE_EXPANDED_FINAL";
@@ -787,9 +785,7 @@ const drawProductionMarks = ({
 
     const isBoxMode = Boolean(
         marks?.isBoxJob === true ||
-        marks?.mode === "BOX" ||
-        marks?.boxConfig?.dielineOverlay === true ||
-        marks?.dielineOverlay === true
+        marks?.mode === "BOX"
     );
 
     const unit = cropMarks?.unit || "mm";
@@ -960,7 +956,7 @@ const drawProductionMarks = ({
     }
 
     /**
-     * 9. BOX STRUCTURAL KEYLINES (Red Cut, Blue Crease, Finger Notch & CAD Dimensions)
+     * 9. BOX STRUCTURAL & PREPRESS KEY DIE LINES (Red Cut, Blue Crease)
      * ONLY rendered when the user explicitly enables Key Die Lines (dielineOverlay).
      */
     const keylinesEnabled = Boolean(
@@ -976,6 +972,8 @@ const drawProductionMarks = ({
                 page,
                 placement,
                 boxConfig: marks?.boxConfig,
+                coverStudio: marks?.coverStudio,
+                isBoxMode,
                 font
             });
         }
@@ -1151,10 +1149,97 @@ const drawBoxKeylines = ({
     page,
     placement,
     boxConfig = {},
+    coverStudio = null,
+    isBoxMode = false,
     font
 }) => {
     const { x, y, width, height, rotation = 0 } = placement;
     const rot = (Number(rotation) || 0) % 360;
+
+    const cutColor = rgb(0.92, 0.12, 0.24);    // #EF4444 Prepress CAD Red Cut
+    const creaseColor = rgb(0, 0.45, 0.95);    // #0066FF Prepress CAD Blue Crease
+
+    if (!isBoxMode) {
+        // ─── BOOK TEXT / COVER KEY DIE LINE ──────────────────────────────
+        // Draw Red Cut Perimeter at finished trim boundary
+        page.drawRectangle({
+            x,
+            y,
+            width,
+            height,
+            borderColor: cutColor,
+            borderWidth: 0.75,
+            opacity: 0.9
+        });
+
+        // If Book Cover Studio has spine or flaps, draw Blue Crease Scorelines
+        if (coverStudio) {
+            const spineW_mm = Number(coverStudio.spineWidth) || 0;
+            const flapW_mm = Number(coverStudio.flapWidth) || 0;
+            const hasFlaps = Boolean(coverStudio.hasFlaps);
+
+            if (spineW_mm > 0) {
+                const spinePt = toPoints(spineW_mm, "mm");
+                const flapPt = hasFlaps && flapW_mm > 0 ? toPoints(flapW_mm, "mm") : 0;
+                const bookBodyW_pt = Math.max(10, (width - spinePt - (2 * flapPt)) / 2);
+
+                const leftSpineX = x + flapPt + bookBodyW_pt;
+                const rightSpineX = leftSpineX + spinePt;
+
+                // Left spine crease line (Blue)
+                page.drawLine({
+                    start: { x: leftSpineX, y: y - 2 },
+                    end: { x: leftSpineX, y: y + height + 2 },
+                    thickness: 0.75,
+                    color: creaseColor
+                });
+
+                // Right spine crease line (Blue)
+                page.drawLine({
+                    start: { x: rightSpineX, y: y - 2 },
+                    end: { x: rightSpineX, y: y + height + 2 },
+                    thickness: 0.75,
+                    color: creaseColor
+                });
+
+                // Flap fold creases if flaps exist
+                if (hasFlaps && flapPt > 0) {
+                    page.drawLine({
+                        start: { x: x + flapPt, y: y - 2 },
+                        end: { x: x + flapPt, y: y + height + 2 },
+                        thickness: 0.75,
+                        color: creaseColor
+                    });
+                    page.drawLine({
+                        start: { x: x + width - flapPt, y: y - 2 },
+                        end: { x: x + width - flapPt, y: y + height + 2 },
+                        thickness: 0.75,
+                        color: creaseColor
+                    });
+                }
+            }
+        }
+
+        if (font) {
+            const labelText = coverStudio ? "KEY DIE LINE (COVER)" : "KEY DIE LINE (TRIM)";
+            const textWidth = font.widthOfTextAtSize ? font.widthOfTextAtSize(labelText, 5.5) : labelText.length * 3.3;
+            page.drawRectangle({
+                x: x + 2,
+                y: y + height - 9.5,
+                width: textWidth + 6,
+                height: 7.5,
+                color: cutColor
+            });
+            page.drawText(labelText, {
+                x: x + 5,
+                y: y + height - 7.5,
+                size: 5.5,
+                font,
+                color: rgb(1, 1, 1)
+            });
+        }
+        return;
+    }
 
     // 1. Box Structural Dimensions (mm & Proportions)
     const L = Number(boxConfig.length) || 100;
@@ -1231,8 +1316,7 @@ const drawBoxKeylines = ({
     const v3 = originV + innerH;
 
     // Prepress CAD Colors (NO GREEN LINES)
-    const cutColor = rgb(0.92, 0.12, 0.24);    // #EF4444 Prepress CAD Red Cut
-    const creaseColor = rgb(0, 0.45, 0.95);    // #0066FF Prepress CAD Blue Crease
+    // cutColor & creaseColor already declared at start of drawBoxKeylines
     const guideColor = rgb(0.25, 0.55, 0.92);   // Dimension guide ticks
     const badgeBg = rgb(0.06, 0.1, 0.18);       // High-contrast dark badge pill
     const badgeText = rgb(0.9, 0.95, 1);       // White/ice-blue CAD text

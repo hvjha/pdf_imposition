@@ -13,6 +13,14 @@ dotenv.config();
 
 const PORT = process.env.PORT || 8080;
 
+process.on("uncaughtException", (err) => {
+    console.error("[CRITICAL PROCESS ERROR] Uncaught exception:", err.message);
+});
+
+process.on("unhandledRejection", (reason) => {
+    console.error("[CRITICAL PROCESS ERROR] Unhandled rejection:", reason?.message || reason);
+});
+
 const startServer = async () => {
 
     try {
