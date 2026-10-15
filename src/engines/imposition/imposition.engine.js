@@ -1903,7 +1903,8 @@ const buildLayoutSide = ({
     pageOffset,
     sourcePageCount,
     pageRotation = 0,
-    boxConfig = null
+    boxConfig = null,
+    targetPage = null
 }) => {
 
     if (
@@ -1929,8 +1930,9 @@ const buildLayoutSide = ({
 
 
         const sourcePageNumber =
-            pageOffset +
-            localPageNumber;
+            targetPage != null
+                ? targetPage
+                : (pageOffset + localPageNumber);
 
 
         /*
@@ -2153,7 +2155,9 @@ const buildPhysicalLayout = ({
     sheet,
     workStyle,
     pageRotation = 0,
-    boxConfig = null
+    boxConfig = null,
+    frontTargetPage = null,
+    backTargetPage = null
 }) => {
 
     let frontPlacements =
@@ -2171,7 +2175,9 @@ const buildPhysicalLayout = ({
 
             pageRotation,
 
-            boxConfig
+            boxConfig,
+
+            targetPage: frontTargetPage
 
         });
 
@@ -2191,7 +2197,9 @@ const buildPhysicalLayout = ({
 
             pageRotation,
 
-            boxConfig
+            boxConfig,
+
+            targetPage: backTargetPage
 
         });
 
@@ -2313,11 +2321,25 @@ const buildAllPhysicalLayouts = ({
     boxConfig = null
 }) => {
 
+    const isBoxMode =
+        pattern?.mode === "BOX" ||
+        pattern?.mode === "PACKAGING" ||
+        Boolean(boxConfig && (boxConfig.isBoxJob || boxConfig.boxStyle || boxConfig.flatWidth > 0 || boxConfig.length > 0));
+
+    const isDuplexBox =
+        isBoxMode &&
+        Array.isArray(pattern?.back) &&
+        pattern.back.length > 0;
+
     const layoutCount =
-        Math.ceil(
-            sourcePageCount /
-            pagesPerLayout
-        );
+        isBoxMode
+            ? (isDuplexBox
+                ? Math.max(1, Math.ceil(sourcePageCount / 2))
+                : Math.max(1, sourcePageCount))
+            : Math.ceil(
+                sourcePageCount /
+                pagesPerLayout
+            );
 
 
     const layouts = [];
@@ -2331,46 +2353,88 @@ const buildAllPhysicalLayouts = ({
         layoutIndex++
     ) {
 
-        const pageOffset =
-            layoutIndex *
-            pagesPerLayout;
+        let physicalLayout;
+        let pageStart;
+        let pageEnd;
+
+        if (isBoxMode) {
+            const frontTargetPage =
+                isDuplexBox
+                    ? (layoutIndex * 2 + 1)
+                    : (layoutIndex + 1);
+
+            const backTargetPage =
+                isDuplexBox
+                    ? Math.min(sourcePageCount, layoutIndex * 2 + 2)
+                    : null;
+
+            physicalLayout =
+                buildPhysicalLayout({
+
+                    pattern,
+
+                    geometry,
+
+                    pageOffset: 0,
+
+                    sourcePageCount,
+
+                    sheet,
+
+                    workStyle,
+
+                    pageRotation,
+
+                    boxConfig,
+
+                    frontTargetPage,
+
+                    backTargetPage
+
+                });
+
+            pageStart = frontTargetPage;
+            pageEnd = isDuplexBox && backTargetPage ? backTargetPage : frontTargetPage;
+        } else {
+            const pageOffset =
+                layoutIndex *
+                pagesPerLayout;
 
 
-        const physicalLayout =
-            buildPhysicalLayout({
+            physicalLayout =
+                buildPhysicalLayout({
 
-                pattern,
+                    pattern,
 
-                geometry,
+                    geometry,
 
-                pageOffset,
+                    pageOffset,
 
-                sourcePageCount,
+                    sourcePageCount,
 
-                sheet,
+                    sheet,
 
-                workStyle,
+                    workStyle,
 
-                pageRotation,
+                    pageRotation,
 
-                boxConfig
+                    boxConfig
 
-            });
-
-
-        const pageStart =
-            pageOffset + 1;
+                });
 
 
-        const pageEnd =
-            Math.min(
+            pageStart =
+                pageOffset + 1;
 
-                pageOffset +
-                pagesPerLayout,
 
-                sourcePageCount
+            pageEnd =
+                Math.min(
+                    pageOffset +
+                    pagesPerLayout,
 
-            );
+                    sourcePageCount
+                );
+        }
 
 
         layouts.push({
@@ -2938,53 +3002,71 @@ const imposePdf = async ({
     let trimTopMM = Number(boxCfg.trimTopMM ?? (boxCfg.trimTop != null ? boxCfg.trimTop * unitFactor : normalizedConfig.trimMargins?.top ?? 0));
     let trimBottomMM = Number(boxCfg.trimBottomMM ?? (boxCfg.trimBottom != null ? boxCfg.trimBottom * unitFactor : normalizedConfig.trimMargins?.bottom ?? 0));
 
-    // If removeWhiteSpace is true and no manual trim margins are specified, auto-detect content bbox
-    if (isBoxJob && (boxCfg.removeWhiteSpace || boxCfg.autoDetectMargins) && trimTopMM === 0 && trimBottomMM === 0 && trimLeftMM === 0 && trimRightMM === 0) {
-        const detected = detectContentBoundingBox(sourcePdf.getPage(0));
-        if (detected) {
-            trimLeftMM = detected.leftMM;
-            trimRightMM = detected.rightMM;
-            trimTopMM = detected.topMM;
-            trimBottomMM = detected.bottomMM;
-        } else if (boxCfg.flatWidth > 0 && boxCfg.flatHeight > 0) {
-            const firstPage = sourcePdf.getPage(0);
-            const mediaBox = firstPage.getMediaBox();
-            const mediaW_mm = mediaBox.width * 25.4 / 72;
-            const mediaH_mm = mediaBox.height * 25.4 / 72;
-            const flatW_mm = (boxCfg.unit === 'inch' || boxCfg.unit === 'in') ? boxCfg.flatWidth * 25.4 : boxCfg.flatWidth;
-            const flatH_mm = (boxCfg.unit === 'inch' || boxCfg.unit === 'in') ? boxCfg.flatHeight * 25.4 : boxCfg.flatHeight;
-            if (mediaW_mm > flatW_mm + 1) {
-                trimLeftMM = Math.max(0, (mediaW_mm - flatW_mm) / 2);
-                trimRightMM = trimLeftMM;
-            }
-            if (mediaH_mm > flatH_mm + 1) {
-                trimTopMM = Math.max(0, (mediaH_mm - flatH_mm) / 2);
-                trimBottomMM = trimTopMM;
-            }
-        }
-    }
+    // Auto-detect and trim white space per page for box mode
+    const hasManualTrim = trimTopMM > 0 || trimBottomMM > 0 || trimLeftMM > 0 || trimRightMM > 0;
+    let anyTrimApplied = false;
+    const pageTrimmedWidths = [];
+    const pageTrimmedHeights = [];
 
-    if (trimTopMM > 0 || trimBottomMM > 0 || trimLeftMM > 0 || trimRightMM > 0) {
-        const trimLeftPt = toPoints(trimLeftMM, 'mm');
-        const trimRightPt = toPoints(trimRightMM, 'mm');
-        const trimTopPt = toPoints(trimTopMM, 'mm');
-        const trimBottomPt = toPoints(trimBottomMM, 'mm');
-
+    if (isBoxJob || hasManualTrim) {
         for (let i = 0; i < sourcePdf.getPageCount(); i++) {
             const page = sourcePdf.getPage(i);
             const mediaBox = page.getMediaBox();
-            const cropX = mediaBox.x + trimLeftPt;
-            const cropY = mediaBox.y + trimBottomPt;
-            const cropW = Math.max(10, mediaBox.width - trimLeftPt - trimRightPt);
-            const cropH = Math.max(10, mediaBox.height - trimTopPt - trimBottomPt);
-            page.setCropBox(cropX, cropY, cropW, cropH);
+            let pLeftMM = trimLeftMM;
+            let pRightMM = trimRightMM;
+            let pTopMM = trimTopMM;
+            let pBottomMM = trimBottomMM;
+
+            // Auto-detect white space per page if no manual trim specified (enabled by default for box jobs)
+            if (!hasManualTrim && isBoxJob && boxCfg.removeWhiteSpace !== false) {
+                const detected = detectContentBoundingBox(page);
+                if (detected && (detected.leftMM > 0 || detected.bottomMM > 0 || detected.rightMM > 0 || detected.topMM > 0)) {
+                    pLeftMM = detected.leftMM;
+                    pRightMM = detected.rightMM;
+                    pTopMM = detected.topMM;
+                    pBottomMM = detected.bottomMM;
+                } else if (boxCfg.flatWidth > 0 && boxCfg.flatHeight > 0) {
+                    const mediaW_mm = mediaBox.width * 25.4 / 72;
+                    const mediaH_mm = mediaBox.height * 25.4 / 72;
+                    const flatW_mm = (boxCfg.unit === 'inch' || boxCfg.unit === 'in') ? boxCfg.flatWidth * 25.4 : boxCfg.flatWidth;
+                    const flatH_mm = (boxCfg.unit === 'inch' || boxCfg.unit === 'in') ? boxCfg.flatHeight * 25.4 : boxCfg.flatHeight;
+                    if (mediaW_mm > flatW_mm + 1) {
+                        pLeftMM = Math.max(0, (mediaW_mm - flatW_mm) / 2);
+                        pRightMM = pLeftMM;
+                    }
+                    if (mediaH_mm > flatH_mm + 1) {
+                        pTopMM = Math.max(0, (mediaH_mm - flatH_mm) / 2);
+                        pBottomMM = pTopMM;
+                    }
+                }
+            }
+
+            if (pLeftMM > 0 || pRightMM > 0 || pTopMM > 0 || pBottomMM > 0) {
+                const pLeftPt = toPoints(pLeftMM, 'mm');
+                const pRightPt = toPoints(pRightMM, 'mm');
+                const pTopPt = toPoints(pTopMM, 'mm');
+                const pBottomPt = toPoints(pBottomMM, 'mm');
+
+                const cropX = mediaBox.x + pLeftPt;
+                const cropY = mediaBox.y + pBottomPt;
+                const cropW = Math.max(10, mediaBox.width - pLeftPt - pRightPt);
+                const cropH = Math.max(10, mediaBox.height - pTopPt - pBottomPt);
+
+                page.setCropBox(cropX, cropY, cropW, cropH);
+                pageTrimmedWidths.push(cropW);
+                pageTrimmedHeights.push(cropH);
+                anyTrimApplied = true;
+            } else {
+                pageTrimmedWidths.push(mediaBox.width);
+                pageTrimmedHeights.push(mediaBox.height);
+            }
         }
 
-        // Update effective source dimensions so calculateGeometry and cell sizing use trimmed box!
-        const firstPage = sourcePdf.getPage(0);
-        const effectiveCrop = firstPage.getCropBox();
-        source.width = effectiveCrop.width;
-        source.height = effectiveCrop.height;
+        if (anyTrimApplied && pageTrimmedWidths.length > 0) {
+            // Update effective source dimensions so calculateGeometry and cell sizing use trimmed box!
+            source.width = pageTrimmedWidths[0];
+            source.height = pageTrimmedHeights[0];
+        }
 
         // Apply 0.25 mm margin in between boxes after trim if not explicitly specified
         if (isBoxJob) {
@@ -3065,7 +3147,7 @@ const imposePdf = async ({
                 layoutConfig.pageRotation || 0,
 
             boxConfig:
-                boxCfg
+                isBoxJob ? boxCfg : null
 
         });
 
