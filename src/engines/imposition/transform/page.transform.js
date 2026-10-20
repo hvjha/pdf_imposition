@@ -131,7 +131,7 @@ const drawPlacedPage = ({
 
         case 90:
 
-            x += targetWidth;
+            x += targetHeight;
 
             break;
 
@@ -146,7 +146,7 @@ const drawPlacedPage = ({
 
         case 270:
 
-            y += targetHeight;
+            y += targetWidth;
 
             break;
 

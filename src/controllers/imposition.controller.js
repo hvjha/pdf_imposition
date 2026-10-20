@@ -499,8 +499,13 @@ const detectArtworkMargins = async (req, res) => {
             success: true,
             detected: true,
             margins: detected,
+            dielineMargins: detected.dielineOnly || null,
             sourceSize: { widthMM: sourceW_mm, heightMM: sourceH_mm },
-            trimmedSize: { widthMM: trimmedW_mm, heightMM: trimmedH_mm }
+            trimmedSize: { widthMM: trimmedW_mm, heightMM: trimmedH_mm },
+            dielineTrimmedSize: detected.dielineOnly ? {
+                widthMM: detected.dielineOnly.widthMM,
+                heightMM: detected.dielineOnly.heightMM
+            } : null
         });
     } catch (err) {
         return res.status(500).json({

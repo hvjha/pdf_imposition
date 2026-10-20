@@ -2572,42 +2572,31 @@ const drawSourcePage = async ({
 
     // Box Auto-Crop White Space Handling
     const boxCfg = marks?.boxConfig || {};
-    if (marks?.mode === "BOX" || marks?.isBoxJob || boxCfg.removeWhiteSpace) {
-        if (boxCfg.removeWhiteSpace !== false) {
-            const mediaBox = sourcePage.getMediaBox();
-            const trimBox = sourcePage.getTrimBox();
-            const cropBox = sourcePage.getCropBox();
+    const isTightCad = Boolean(boxCfg.tightCadPack || boxCfg.removeWhiteSpace !== false);
+    if ((marks?.mode === "BOX" || marks?.isBoxJob) && isTightCad) {
+        const mediaBox = sourcePage.getMediaBox();
+        const trimBox = sourcePage.getTrimBox();
+        const cropBox = sourcePage.getCropBox();
 
-            let cropX = mediaBox.x;
-            let cropY = mediaBox.y;
-            let cropW = mediaBox.width;
-            let cropH = mediaBox.height;
+        let cropX = mediaBox.x;
+        let cropY = mediaBox.y;
+        let cropW = mediaBox.width;
+        let cropH = mediaBox.height;
 
-            if (trimBox && trimBox.width < mediaBox.width && trimBox.height < mediaBox.height) {
-                cropX = trimBox.x;
-                cropY = trimBox.y;
-                cropW = trimBox.width;
-                cropH = trimBox.height;
-            } else if (cropBox && (cropBox.width < mediaBox.width || cropBox.height < mediaBox.height || cropBox.x !== mediaBox.x || cropBox.y !== mediaBox.y)) {
-                cropX = cropBox.x;
-                cropY = cropBox.y;
-                cropW = cropBox.width;
-                cropH = cropBox.height;
-            } else if (boxCfg.flatWidth > 0 && boxCfg.flatHeight > 0) {
-                const bUnit = (boxCfg.unit === 'inch' || boxCfg.unit === 'in') ? 'inch' : 'mm';
-                const flatW = toPoints(boxCfg.flatWidth, bUnit);
-                const flatH = toPoints(boxCfg.flatHeight, bUnit);
-                if (flatW > 0 && flatH > 0 && (mediaBox.width > flatW + 1 || mediaBox.height > flatH + 1)) {
-                    cropX = mediaBox.x + Math.max(0, (mediaBox.width - flatW) / 2);
-                    cropY = mediaBox.y + Math.max(0, (mediaBox.height - flatH) / 2);
-                    cropW = Math.min(mediaBox.width, flatW);
-                    cropH = Math.min(mediaBox.height, flatH);
-                }
-            }
+        if (cropBox && (cropBox.width < mediaBox.width - 0.5 || cropBox.height < mediaBox.height - 0.5 || Math.abs(cropBox.x - mediaBox.x) > 0.5 || Math.abs(cropBox.y - mediaBox.y) > 0.5)) {
+            cropX = cropBox.x;
+            cropY = cropBox.y;
+            cropW = cropBox.width;
+            cropH = cropBox.height;
+        } else if (trimBox && trimBox.width < mediaBox.width - 0.5 && trimBox.height < mediaBox.height - 0.5) {
+            cropX = trimBox.x;
+            cropY = trimBox.y;
+            cropW = trimBox.width;
+            cropH = trimBox.height;
+        }
 
-            if (cropW > 0 && cropH > 0 && (cropW < mediaBox.width || cropH < mediaBox.height)) {
-                sourcePage.setCropBox(cropX, cropY, cropW, cropH);
-            }
+        if (cropW > 0 && cropH > 0 && (cropW < mediaBox.width - 0.5 || cropH < mediaBox.height - 0.5)) {
+            sourcePage.setCropBox(cropX, cropY, cropW, cropH);
         }
     }
 
@@ -3004,11 +2993,12 @@ const imposePdf = async ({
 
     // Auto-detect and trim white space per page for box mode
     const hasManualTrim = trimTopMM > 0 || trimBottomMM > 0 || trimLeftMM > 0 || trimRightMM > 0;
+    const autoTrimActive = boxCfg.removeWhiteSpace !== false;
     let anyTrimApplied = false;
     const pageTrimmedWidths = [];
     const pageTrimmedHeights = [];
 
-    if (isBoxJob || hasManualTrim) {
+    if (hasManualTrim || (isBoxJob && autoTrimActive)) {
         for (let i = 0; i < sourcePdf.getPageCount(); i++) {
             const page = sourcePdf.getPage(i);
             const mediaBox = page.getMediaBox();
@@ -3017,26 +3007,22 @@ const imposePdf = async ({
             let pTopMM = trimTopMM;
             let pBottomMM = trimBottomMM;
 
-            // Auto-detect white space per page if no manual trim specified (enabled by default for box jobs)
-            if (!hasManualTrim && isBoxJob && boxCfg.removeWhiteSpace !== false) {
+            // Auto-detect white space per page when no manual trim was provided
+            if (!hasManualTrim && isBoxJob && autoTrimActive) {
                 const detected = detectContentBoundingBox(page);
-                if (detected && (detected.leftMM > 0 || detected.bottomMM > 0 || detected.rightMM > 0 || detected.topMM > 0)) {
-                    pLeftMM = detected.leftMM;
-                    pRightMM = detected.rightMM;
-                    pTopMM = detected.topMM;
-                    pBottomMM = detected.bottomMM;
-                } else if (boxCfg.flatWidth > 0 && boxCfg.flatHeight > 0) {
-                    const mediaW_mm = mediaBox.width * 25.4 / 72;
-                    const mediaH_mm = mediaBox.height * 25.4 / 72;
-                    const flatW_mm = (boxCfg.unit === 'inch' || boxCfg.unit === 'in') ? boxCfg.flatWidth * 25.4 : boxCfg.flatWidth;
-                    const flatH_mm = (boxCfg.unit === 'inch' || boxCfg.unit === 'in') ? boxCfg.flatHeight * 25.4 : boxCfg.flatHeight;
-                    if (mediaW_mm > flatW_mm + 1) {
-                        pLeftMM = Math.max(0, (mediaW_mm - flatW_mm) / 2);
-                        pRightMM = pLeftMM;
-                    }
-                    if (mediaH_mm > flatH_mm + 1) {
-                        pTopMM = Math.max(0, (mediaH_mm - flatH_mm) / 2);
-                        pBottomMM = pTopMM;
+                if (detected) {
+                    // For dielines/keylines, trim off detached title header by default unless trimHeader is explicitly false
+                    const shouldTrimHeader = boxCfg.trimHeader !== false;
+                    const targetBox = (shouldTrimHeader && detected.dielineOnly) ? detected.dielineOnly : detected;
+                    pLeftMM = targetBox.leftMM;
+                    pRightMM = targetBox.rightMM;
+                    pBottomMM = targetBox.bottomMM;
+                    pTopMM = targetBox.topMM;
+
+                    // If trimHeader is active and dielineOnly was not available (e.g. IMAGES or raster artwork), trim header height!
+                    if (boxCfg.trimHeader === true && !detected.dielineOnly) {
+                        const hMM = Number(boxCfg.headerHeightMM || 20.0);
+                        pTopMM += hMM;
                     }
                 }
             }

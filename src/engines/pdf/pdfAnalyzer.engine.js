@@ -1,4 +1,5 @@
 import { PDFDocument } from "pdf-lib";
+import { detectContentBoundingBox } from "../imposition/imposition.utils.js";
 
 const POINTS_PER_INCH = 72;
 const EPSILON = 0.01;
@@ -100,6 +101,28 @@ const analyzePage = (page, pageNumber) => {
     const separateBleedDetected =
         !bleedEqualsMedia;
 
+    let contentBoxData = null;
+    try {
+        const contentBBox = detectContentBoundingBox(page);
+        if (contentBBox) {
+            contentBoxData = {
+                x: mediaBox.x + (contentBBox.leftMM * 72 / 25.4),
+                y: mediaBox.y + (contentBBox.bottomMM * 72 / 25.4),
+                width: contentBBox.widthMM * 72 / 25.4,
+                height: contentBBox.heightMM * 72 / 25.4,
+                widthInches: pointsToInches(contentBBox.widthMM * 72 / 25.4),
+                heightInches: pointsToInches(contentBBox.heightMM * 72 / 25.4),
+                leftMM: contentBBox.leftMM,
+                bottomMM: contentBBox.bottomMM,
+                rightMM: contentBBox.rightMM,
+                topMM: contentBBox.topMM,
+                widthMM: contentBBox.widthMM,
+                heightMM: contentBBox.heightMM,
+                dielineOnly: contentBBox.dielineOnly || null,
+                headerHeightMM: contentBBox.headerHeightMM || 20.0
+            };
+        }
+    } catch (e) {}
 
     return {
 
@@ -141,7 +164,10 @@ const analyzePage = (page, pageNumber) => {
                 getBoxData(bleedBox),
 
             art:
-                getBoxData(artBox)
+                getBoxData(artBox),
+
+            content:
+                contentBoxData
         },
 
 
