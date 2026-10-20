@@ -1,5 +1,7 @@
 import express from "express";
 import cors from "cors";
+import path from "path";
+import fs from "fs";
 
 import pdfRoutes from "./routes/pdf.routes.js";
 import impositionRoutes from "./routes/imposition.routes.js";
@@ -106,6 +108,26 @@ app.get(
         });
     }
 );
+
+// --------------------------------------------------
+// Serve Frontend Static Files (Unified Single-Domain Deployment)
+// --------------------------------------------------
+const publicDir = path.resolve("public");
+if (fs.existsSync(publicDir)) {
+    app.use(express.static(publicDir));
+
+    // Handle React SPA client routing (any non-API GET route returns index.html)
+    app.use((req, res, next) => {
+        if (req.method !== "GET" || req.originalUrl.startsWith("/api")) {
+            return next();
+        }
+        const indexFile = path.join(publicDir, "index.html");
+        if (fs.existsSync(indexFile)) {
+            return res.sendFile(indexFile);
+        }
+        return next();
+    });
+}
 
 // --------------------------------------------------
 // Global Error Handler
