@@ -1260,6 +1260,8 @@ const STANDARD_SHEET_PRESETS_PT = [
     { name: 'A3+', width: toPoints(329, 'mm'), height: toPoints(483, 'mm') },
     { name: '18×25"', width: toPoints(635, 'mm'), height: toPoints(457.2, 'mm') },
     { name: '20×26"', width: toPoints(508, 'mm'), height: toPoints(660, 'mm') },
+    { name: '20×28"', width: toPoints(508, 'mm'), height: toPoints(711.2, 'mm') },
+    { name: '20×30"', width: toPoints(508, 'mm'), height: toPoints(762, 'mm') },
     { name: 'B2', width: toPoints(500, 'mm'), height: toPoints(707, 'mm') },
     { name: '23×36"', width: toPoints(584, 'mm'), height: toPoints(914, 'mm') },
     { name: '25×38"', width: toPoints(635, 'mm'), height: toPoints(965, 'mm') },
@@ -2945,7 +2947,7 @@ const imposePdf = async ({
                 layoutConfig.rows,
 
             interlockMode:
-                layoutConfig.interlockMode || normalizedConfig.boxConfig?.interlockMode || "INTERLOCKING"
+                layoutConfig.interlockMode || normalizedConfig.boxConfig?.interlockMode || "STANDARD"
 
         });
     if (
@@ -3011,7 +3013,7 @@ const imposePdf = async ({
             if (!hasManualTrim && isBoxJob && autoTrimActive) {
                 const detected = detectContentBoundingBox(page);
                 if (detected) {
-                    // For dielines/keylines, trim off detached title header by default unless trimHeader is explicitly false
+                    // In packaging box imposition, default to trimming single-up drawing title headers unless explicitly disabled
                     const shouldTrimHeader = boxCfg.trimHeader !== false;
                     const targetBox = (shouldTrimHeader && detected.dielineOnly) ? detected.dielineOnly : detected;
                     pLeftMM = targetBox.leftMM;
@@ -3019,10 +3021,12 @@ const imposePdf = async ({
                     pBottomMM = targetBox.bottomMM;
                     pTopMM = targetBox.topMM;
 
-                    // If trimHeader is active and dielineOnly was not available (e.g. IMAGES or raster artwork), trim header height!
-                    if (boxCfg.trimHeader === true && !detected.dielineOnly) {
-                        const hMM = Number(boxCfg.headerHeightMM || 20.0);
-                        pTopMM += hMM;
+                    // If a detached title block was detected, dielineOnly contains the carton-only bounds
+                    if (shouldTrimHeader && detected.dielineOnly) {
+                        pTopMM = detected.dielineOnly.topMM;
+                    } else if (boxCfg.customHeaderTrimHeight && Number(boxCfg.customHeaderTrimHeight) > 0) {
+                        // User explicitly requested extra manual header trimming
+                        pTopMM += Number(boxCfg.customHeaderTrimHeight);
                     }
                 }
             }
@@ -3053,16 +3057,32 @@ const imposePdf = async ({
             source.width = pageTrimmedWidths[0];
             source.height = pageTrimmedHeights[0];
         }
+    }
 
-        // Apply 0.25 mm margin in between boxes after trim if not explicitly specified
-        if (isBoxJob) {
-            const dieGapPt = toPoints(0.25, 'mm');
-            if (normalizedConfig.gutter.horizontal === 0 && boxCfg.gutterX === undefined) {
-                normalizedConfig.gutter.horizontal = dieGapPt;
-            }
-            if (normalizedConfig.gutter.vertical === 0 && boxCfg.gutterY === undefined) {
-                normalizedConfig.gutter.vertical = dieGapPt;
-            }
+    if (isBoxJob) {
+        // Packaging cartons must be reproduced at exact 1:1 scale (100%) so physical cutting dies match perfectly
+        normalizedConfig.fitMode = "NONE";
+
+        // Fallback to configured box flat dimensions if automatic vector path trim wasn't triggered
+        if ((!anyTrimApplied || !source.width || source.width <= 0) && normalizedConfig.bookSize && normalizedConfig.bookSize.width > 0 && normalizedConfig.bookSize.height > 0) {
+            source.width = normalizedConfig.bookSize.width;
+            source.height = normalizedConfig.bookSize.height;
+        }
+
+        // Apply gap between adjacent packaging ups: 0 mm default for Tight CAD Pack (butt-cut)
+        const defaultDieGapMm = 0;
+        const defaultDieGapPt = toPoints(defaultDieGapMm, 'mm');
+
+        if (boxCfg.gutterX !== undefined && boxCfg.gutterX !== null && !isNaN(Number(boxCfg.gutterX))) {
+            normalizedConfig.gutter.horizontal = toPoints(Number(boxCfg.gutterX), 'mm');
+        } else if (normalizedConfig.gutter.horizontal === undefined || normalizedConfig.gutter.horizontal === null) {
+            normalizedConfig.gutter.horizontal = defaultDieGapPt;
+        }
+
+        if (boxCfg.gutterY !== undefined && boxCfg.gutterY !== null && !isNaN(Number(boxCfg.gutterY))) {
+            normalizedConfig.gutter.vertical = toPoints(Number(boxCfg.gutterY), 'mm');
+        } else if (normalizedConfig.gutter.vertical === undefined || normalizedConfig.gutter.vertical === null) {
+            normalizedConfig.gutter.vertical = defaultDieGapPt;
         }
     }
 

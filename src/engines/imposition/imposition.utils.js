@@ -350,6 +350,13 @@ const isPlacementInsideSheet = (
 const detectContentBoundingBox = (page) => {
     if (!page || !page.node) return null;
     const mediaBox = page.getMediaBox();
+    const cropBox = (page.getCropBox && page.getCropBox()) || mediaBox;
+    const artBox = (page.getArtBox && page.getArtBox()) || mediaBox;
+
+    // Use existing CropBox or ArtBox as search constraint if defined smaller than MediaBox
+    const searchBox = (cropBox.width < mediaBox.width - 2 && cropBox.height < mediaBox.height - 2) ? cropBox
+                    : (artBox.width < mediaBox.width - 2 && artBox.height < mediaBox.height - 2) ? artBox
+                    : mediaBox;
 
     // 1. Check for XObjects (Form XObjects with /BBox and Image XObjects)
     const res = page.node.Resources ? page.node.Resources() : null;
@@ -375,24 +382,52 @@ const detectContentBoundingBox = (page) => {
         }
     }
 
-    // 2. Parse raw content stream operators
-    const contents = page.node.Contents();
-    let streamText = "";
+    // 2. Parse raw content stream operators (supporting PDFArray, PDFRef, and PDFStream)
+    const contents = page.node.Contents ? page.node.Contents() : null;
+    let streamObjects = [];
     if (contents) {
-        const streams = Array.isArray(contents) ? contents : [contents];
-        for (const st of streams) {
-            try {
-                let bytes = st.asUint8Array ? st.asUint8Array() : null;
-                if (!bytes && st.contents) bytes = st.contents;
-                if (!bytes) continue;
-                try {
-                    const decomp = zlib.inflateSync(Buffer.from(bytes));
-                    streamText += decomp.toString("binary") + "\n";
-                } catch (e) {
-                    streamText += Buffer.from(bytes).toString("binary") + "\n";
-                }
-            } catch (err) {}
+        if (contents.asArray) {
+            streamObjects = contents.asArray().map(ref => page.doc ? page.doc.context.lookup(ref) : (page.node.context ? page.node.context.lookup(ref) : ref));
+        } else if (Array.isArray(contents)) {
+            streamObjects = contents.map(ref => (ref && ref.tag && page.doc) ? page.doc.context.lookup(ref) : ref);
+        } else {
+            const ctx = page.doc?.context || page.node?.context;
+            const resolved = ctx ? ctx.lookup(contents) : contents;
+            streamObjects = [resolved || contents];
         }
+    }
+
+    let streamText = "";
+    for (const st of streamObjects) {
+        if (!st) continue;
+        try {
+            let bytes = st.getContents ? st.getContents() : (st.asUint8Array ? st.asUint8Array() : (st.contents || null));
+            if (!bytes) continue;
+            try {
+                const decomp = zlib.inflateSync(Buffer.from(bytes));
+                streamText += decomp.toString("binary") + "\n";
+            } catch (e) {
+                streamText += Buffer.from(bytes).toString("binary") + "\n";
+            }
+        } catch (err) {}
+    }
+
+    function multMatrix(m1, m2) {
+        return [
+            m1[0] * m2[0] + m1[1] * m2[2],
+            m1[0] * m2[1] + m1[1] * m2[3],
+            m1[2] * m2[0] + m1[3] * m2[2],
+            m1[2] * m2[1] + m1[3] * m2[3],
+            m1[4] * m2[0] + m1[5] * m2[2] + m2[4],
+            m1[4] * m2[1] + m1[5] * m2[3] + m2[5]
+        ];
+    }
+
+    function transformPoint(p, m) {
+        return {
+            x: p.x * m[0] + p.y * m[2] + m[4],
+            y: p.x * m[1] + p.y * m[3] + m[5]
+        };
     }
 
     const paintedElements = [];
@@ -400,23 +435,46 @@ const detectContentBoundingBox = (page) => {
 
     if (streamText) {
         const rawTokens = streamText.trim().split(/\s+/);
+        let ctmStack = [[1, 0, 0, 1, 0, 0]];
         let currentCoords = [];
         let lastClipRect = null;
         let lastCm = null;
 
         for (let i = 0; i < rawTokens.length; i++) {
             const t = rawTokens[i];
-            if (t === 'm' || t === 'l') {
+            if (t === 'q') {
+                ctmStack.push([...ctmStack[ctmStack.length - 1]]);
+            } else if (t === 'Q') {
+                if (ctmStack.length > 1) ctmStack.pop();
+            } else if (t === 'cm') {
+                const a = parseFloat(rawTokens[i - 6]);
+                const b = parseFloat(rawTokens[i - 5]);
+                const c = parseFloat(rawTokens[i - 4]);
+                const d = parseFloat(rawTokens[i - 3]);
+                const e = parseFloat(rawTokens[i - 2]);
+                const f = parseFloat(rawTokens[i - 1]);
+                if (Number.isFinite(a) && Number.isFinite(b) && Number.isFinite(c) && Number.isFinite(d) && Number.isFinite(e) && Number.isFinite(f)) {
+                    const top = ctmStack[ctmStack.length - 1];
+                    ctmStack[ctmStack.length - 1] = multMatrix(top, [a, b, c, d, e, f]);
+                    lastCm = {
+                        minX: Math.min(e, e + a),
+                        minY: Math.min(f, f + d),
+                        maxX: Math.max(e, e + a),
+                        maxY: Math.max(f, f + d),
+                        isImage: true
+                    };
+                }
+            } else if (t === 'm' || t === 'l') {
                 const x = parseFloat(rawTokens[i - 2]);
                 const y = parseFloat(rawTokens[i - 1]);
                 if (Number.isFinite(x) && Number.isFinite(y)) {
-                    currentCoords.push({ x, y });
+                    currentCoords.push(transformPoint({ x, y }, ctmStack[ctmStack.length - 1]));
                 }
             } else if (t === 'c') {
                 const x3 = parseFloat(rawTokens[i - 2]);
                 const y3 = parseFloat(rawTokens[i - 1]);
                 if (Number.isFinite(x3) && Number.isFinite(y3)) {
-                    currentCoords.push({ x: x3, y: y3 });
+                    currentCoords.push(transformPoint({ x: x3, y: y3 }, ctmStack[ctmStack.length - 1]));
                 }
             } else if (t === 're') {
                 const x = parseFloat(rawTokens[i - 4]);
@@ -426,37 +484,28 @@ const detectContentBoundingBox = (page) => {
                 if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(w) && Number.isFinite(h)) {
                     // Ignore full-page canvas background rects
                     if (!(w >= mediaBox.width - 2 && h >= mediaBox.height - 2)) {
-                        currentCoords.push({ x, y }, { x: x + w, y: y + h });
+                        const ctm = ctmStack[ctmStack.length - 1];
+                        const p1 = transformPoint({ x, y }, ctm);
+                        const p2 = transformPoint({ x: x + w, y: y + h }, ctm);
+                        currentCoords.push(p1, p2);
                         lastClipRect = {
-                            minX: Math.min(x, x + w),
-                            minY: Math.min(y, y + h),
-                            maxX: Math.max(x, x + w),
-                            maxY: Math.max(y, y + h),
+                            minX: Math.min(p1.x, p2.x),
+                            minY: Math.min(p1.y, p2.y),
+                            maxX: Math.max(p1.x, p2.x),
+                            maxY: Math.max(p1.y, p2.y),
                             isImage: true
                         };
                     }
-                }
-            } else if (t === 'cm') {
-                const a = parseFloat(rawTokens[i - 6]);
-                const d = parseFloat(rawTokens[i - 3]);
-                const e = parseFloat(rawTokens[i - 2]);
-                const f = parseFloat(rawTokens[i - 1]);
-                if (Number.isFinite(a) && Number.isFinite(d) && Number.isFinite(e) && Number.isFinite(f)) {
-                    lastCm = {
-                        minX: Math.min(e, e + a),
-                        minY: Math.min(f, f + d),
-                        maxX: Math.max(e, e + a),
-                        maxY: Math.max(f, f + d),
-                        isImage: true
-                    };
                 }
             } else if (t === 'Do') {
                 const name = rawTokens[i - 1];
                 if (xObjBBoxes[name]) {
                     paintedElements.push(xObjBBoxes[name]);
-                } else if (lastClipRect) {
+                } else if (lastClipRect && lastClipRect.minX >= searchBox.x - 5 && lastClipRect.maxX <= searchBox.x + searchBox.width + 5 &&
+                           lastClipRect.minY >= searchBox.y - 5 && lastClipRect.maxY <= searchBox.y + searchBox.height + 5) {
                     paintedElements.push(lastClipRect);
-                } else if (lastCm) {
+                } else if (lastCm && lastCm.minX >= searchBox.x - 5 && lastCm.maxX <= searchBox.x + searchBox.width + 5 &&
+                           lastCm.minY >= searchBox.y - 5 && lastCm.maxY <= searchBox.y + searchBox.height + 5) {
                     paintedElements.push(lastCm);
                 }
                 currentCoords = [];
@@ -467,8 +516,8 @@ const detectContentBoundingBox = (page) => {
                     let pMinX = Infinity, pMinY = Infinity, pMaxX = -Infinity, pMaxY = -Infinity;
                     let validCount = 0;
                     for (const c of currentCoords) {
-                        if (c.x >= mediaBox.x - 2 && c.x <= mediaBox.x + mediaBox.width + 2 &&
-                            c.y >= mediaBox.y - 2 && c.y <= mediaBox.y + mediaBox.height + 2) {
+                        if (c.x >= searchBox.x - 5 && c.x <= searchBox.x + searchBox.width + 5 &&
+                            c.y >= searchBox.y - 5 && c.y <= searchBox.y + searchBox.height + 5) {
                             pMinX = Math.min(pMinX, c.x);
                             pMinY = Math.min(pMinY, c.y);
                             pMaxX = Math.max(pMaxX, c.x);
@@ -500,8 +549,8 @@ const detectContentBoundingBox = (page) => {
                 const tx = parseFloat(tdMatch[1]);
                 const ty = parseFloat(tdMatch[2]);
                 if (Number.isFinite(tx) && Number.isFinite(ty)) {
-                    if (tx >= mediaBox.x && tx <= mediaBox.x + mediaBox.width &&
-                        ty >= mediaBox.y && ty <= mediaBox.y + mediaBox.height) {
+                    if (tx >= searchBox.x - 5 && tx <= searchBox.x + searchBox.width + 5 &&
+                        ty >= searchBox.y - 5 && ty <= searchBox.y + searchBox.height + 5) {
                         paintedElements.push({ minX: tx, minY: ty, maxX: tx + 15, maxY: ty + 10, isText: true });
                     }
                 }
@@ -510,12 +559,10 @@ const detectContentBoundingBox = (page) => {
     }
 
     // 3. Fallback to ArtBox or TrimBox if no stream elements found
-    const artBox = page.getArtBox ? page.getArtBox() : null;
-    const trimBox = page.getTrimBox ? page.getTrimBox() : null;
-
     if (paintedElements.length === 0) {
         const box = (artBox && (artBox.width < mediaBox.width - 2 || artBox.height < mediaBox.height - 2)) ? artBox
-                  : (trimBox && (trimBox.width < mediaBox.width - 2 || trimBox.height < mediaBox.height - 2)) ? trimBox
+                  : (cropBox && (cropBox.width < mediaBox.width - 2 || cropBox.height < mediaBox.height - 2)) ? cropBox
+                  : (page.getTrimBox && page.getTrimBox() && page.getTrimBox().width < mediaBox.width - 2) ? page.getTrimBox()
                   : null;
         if (box) {
             const leftMM = Math.max(0, Math.round(((box.x - mediaBox.x) * 25.4 / 72) * 10) / 10);
@@ -545,14 +592,6 @@ const detectContentBoundingBox = (page) => {
         minY = Math.min(minY, p.minY);
         maxX = Math.max(maxX, p.maxX);
         maxY = Math.max(maxY, p.maxY);
-    }
-
-    // If ArtBox is more conservative and valid, merge bounds
-    if (artBox && (artBox.width < mediaBox.width - 2 || artBox.height < mediaBox.height - 2)) {
-        minX = Math.max(minX, artBox.x);
-        minY = Math.max(minY, artBox.y);
-        maxX = Math.min(maxX, artBox.x + artBox.width);
-        maxY = Math.min(maxY, artBox.y + artBox.height);
     }
 
     const leftMM = Math.max(0, Math.round(((minX - mediaBox.x) * 25.4 / 72) * 10) / 10);
