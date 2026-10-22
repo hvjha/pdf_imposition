@@ -2007,7 +2007,7 @@ const buildLayoutSide = ({
             const shiftX = toPoints(Number(boxConfig.interlockShiftX || 0), shiftUnit);
             const shiftY = toPoints(Number(boxConfig.interlockShiftY || 0), shiftUnit);
             posX += shiftX;
-            posY -= shiftY;
+            posY += shiftY;
         }
 
         // Apply individual up offset (when operator drags individual ups)
