@@ -1424,7 +1424,9 @@ const calculateGeometry = ({
     pattern,
     margins,
     gutter,
-    fitMode
+    fitMode,
+    layoutShiftX = 0,
+    layoutShiftY = 0
 }) => {
 
     const columns =
@@ -1648,7 +1650,8 @@ const calculateGeometry = ({
             0,
             freeWidth
         ) /
-        2;
+        2 +
+        layoutShiftX;
 
 
     const originY =
@@ -1657,7 +1660,8 @@ const calculateGeometry = ({
             0,
             freeHeight
         ) /
-        2;
+        2 +
+        layoutShiftY;
 
 
     /* --------------------------------------------------------
@@ -3098,6 +3102,9 @@ const imposePdf = async ({
      * --------------------------------------------------------
      */
 
+    const layoutShiftX_Pt = toPoints(Number(boxCfg.layoutShiftX || normalizedConfig.layoutShiftX || 0), 'mm');
+    const layoutShiftY_Pt = toPoints(Number(boxCfg.layoutShiftY || normalizedConfig.layoutShiftY || 0), 'mm');
+
     const geometry =
         calculateGeometry({
 
@@ -3114,7 +3121,13 @@ const imposePdf = async ({
                 normalizedConfig.gutter,
 
             fitMode:
-                normalizedConfig.fitMode
+                normalizedConfig.fitMode,
+
+            layoutShiftX:
+                layoutShiftX_Pt,
+
+            layoutShiftY:
+                layoutShiftY_Pt
 
         });
 
