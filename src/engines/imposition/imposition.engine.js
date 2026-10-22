@@ -1660,7 +1660,7 @@ const calculateGeometry = ({
             0,
             freeHeight
         ) /
-        2 +
+        2 -
         layoutShiftY;
 
 
@@ -1935,11 +1935,38 @@ const buildLayoutSide = ({
             );
 
 
-        const sourcePageNumber =
+        const entryRow =
+            Number(
+                entry.row
+            );
+
+        const entryCol =
+            Number(
+                entry.column
+            );
+
+        const upIndex =
+            entryRow * geometry.columns + entryCol;
+
+        let sourcePageNumber =
             targetPage != null
                 ? targetPage
                 : (pageOffset + localPageNumber);
 
+        // Support multi-page gang and explicit per-up page allocation
+        if (boxConfig) {
+            if (boxConfig.pageAllocation && boxConfig.pageAllocation[upIndex] !== undefined) {
+                sourcePageNumber = Number(boxConfig.pageAllocation[upIndex]);
+            } else if (boxConfig.pageAllocation && boxConfig.pageAllocation[String(upIndex)] !== undefined) {
+                sourcePageNumber = Number(boxConfig.pageAllocation[String(upIndex)]);
+            } else if (boxConfig.multiPageGang && sourcePageCount > 1) {
+                const gangPage = pageOffset + upIndex + 1;
+                if (gangPage > sourcePageCount) {
+                    continue; // Skip empty slots on incomplete final sheet
+                }
+                sourcePageNumber = gangPage;
+            }
+        }
 
         /*
          * Do not generate fake pages for an incomplete final
@@ -1960,14 +1987,10 @@ const buildLayoutSide = ({
             calculateCellPosition({
 
                 row:
-                    Number(
-                        entry.row
-                    ),
+                    entryRow,
 
                 column:
-                    Number(
-                        entry.column
-                    ),
+                    entryCol,
 
                 geometry
 
@@ -1984,7 +2007,19 @@ const buildLayoutSide = ({
             const shiftX = toPoints(Number(boxConfig.interlockShiftX || 0), shiftUnit);
             const shiftY = toPoints(Number(boxConfig.interlockShiftY || 0), shiftUnit);
             posX += shiftX;
-            posY += shiftY;
+            posY -= shiftY;
+        }
+
+        // Apply individual up offset (when operator drags individual ups)
+        if (boxConfig && boxConfig.upOffsets) {
+            const indOffset = boxConfig.upOffsets[upIndex] || boxConfig.upOffsets[String(upIndex)];
+            if (indOffset) {
+                const offUnit = boxConfig.unit === "inch" ? "inch" : "mm";
+                const offX = toPoints(Number(indOffset.x || 0), offUnit);
+                const offY = toPoints(Number(indOffset.y || 0), offUnit);
+                posX += offX;
+                posY -= offY;
+            }
         }
 
         placements.push({
@@ -2337,11 +2372,20 @@ const buildAllPhysicalLayouts = ({
         Array.isArray(pattern?.back) &&
         pattern.back.length > 0;
 
+    const isMultiPageGang =
+        Boolean(
+            boxConfig &&
+            (boxConfig.multiPageGang || boxConfig.isMultiPageGang) &&
+            sourcePageCount > 1
+        );
+
     const layoutCount =
         isBoxMode
             ? (isDuplexBox
                 ? Math.max(1, Math.ceil(sourcePageCount / 2))
-                : Math.max(1, sourcePageCount))
+                : (isMultiPageGang
+                    ? Math.max(1, Math.ceil(sourcePageCount / pagesPerLayout))
+                    : Math.max(1, sourcePageCount)))
             : Math.ceil(
                 sourcePageCount /
                 pagesPerLayout
@@ -2365,14 +2409,21 @@ const buildAllPhysicalLayouts = ({
 
         if (isBoxMode) {
             const frontTargetPage =
-                isDuplexBox
-                    ? (layoutIndex * 2 + 1)
-                    : (layoutIndex + 1);
+                isMultiPageGang
+                    ? null
+                    : (isDuplexBox
+                        ? (layoutIndex * 2 + 1)
+                        : (layoutIndex + 1));
 
             const backTargetPage =
                 isDuplexBox
                     ? Math.min(sourcePageCount, layoutIndex * 2 + 2)
                     : null;
+
+            const boxPageOffset =
+                isMultiPageGang
+                    ? layoutIndex * pagesPerLayout
+                    : 0;
 
             physicalLayout =
                 buildPhysicalLayout({
@@ -2381,7 +2432,7 @@ const buildAllPhysicalLayouts = ({
 
                     geometry,
 
-                    pageOffset: 0,
+                    pageOffset: boxPageOffset,
 
                     sourcePageCount,
 
@@ -2399,8 +2450,13 @@ const buildAllPhysicalLayouts = ({
 
                 });
 
-            pageStart = frontTargetPage;
-            pageEnd = isDuplexBox && backTargetPage ? backTargetPage : frontTargetPage;
+            if (isMultiPageGang) {
+                pageStart = boxPageOffset + 1;
+                pageEnd = Math.min(sourcePageCount, boxPageOffset + pagesPerLayout);
+            } else {
+                pageStart = frontTargetPage;
+                pageEnd = isDuplexBox && backTargetPage ? backTargetPage : frontTargetPage;
+            }
         } else {
             const pageOffset =
                 layoutIndex *
@@ -3073,8 +3129,8 @@ const imposePdf = async ({
             source.height = normalizedConfig.bookSize.height;
         }
 
-        // Apply gap between adjacent packaging ups: 0 mm default for Tight CAD Pack (butt-cut)
-        const defaultDieGapMm = 0;
+        // Apply gap between adjacent packaging ups: 3.0 mm default for standard die clearance
+        const defaultDieGapMm = 3.0;
         const defaultDieGapPt = toPoints(defaultDieGapMm, 'mm');
 
         if (boxCfg.gutterX !== undefined && boxCfg.gutterX !== null && !isNaN(Number(boxCfg.gutterX))) {
