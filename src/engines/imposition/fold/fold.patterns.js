@@ -300,7 +300,11 @@ const generateBoxPattern = ({
             let rot = 0;
             const normInterlock = String(interlockMode || "").toUpperCase();
             if (normInterlock === "INTERLOCKING" || normInterlock === "DUTCH") {
-                rot = (r % 2 === 1) ? 180 : 0;
+                if (rws === 1 && cols > 1) {
+                    rot = (c % 2 === 1) ? 180 : 0;
+                } else {
+                    rot = (r % 2 === 1) ? 180 : 0;
+                }
             } else if (normInterlock === "HEAD_TO_HEAD") {
                 rot = (r % 2 === 0) ? 180 : 0;
             }
