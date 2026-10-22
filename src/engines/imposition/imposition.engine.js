@@ -3013,8 +3013,8 @@ const imposePdf = async ({
             if (!hasManualTrim && isBoxJob && autoTrimActive) {
                 const detected = detectContentBoundingBox(page);
                 if (detected) {
-                    // In packaging box imposition, default to trimming single-up drawing title headers unless explicitly disabled
-                    const shouldTrimHeader = boxCfg.trimHeader !== false;
+                    // In packaging box imposition, only trim single-up drawing title headers when explicitly enabled
+                    const shouldTrimHeader = Boolean(boxCfg.trimHeader);
                     const targetBox = (shouldTrimHeader && detected.dielineOnly) ? detected.dielineOnly : detected;
                     pLeftMM = targetBox.leftMM;
                     pRightMM = targetBox.rightMM;
@@ -3024,7 +3024,7 @@ const imposePdf = async ({
                     // If a detached title block was detected, dielineOnly contains the carton-only bounds
                     if (shouldTrimHeader && detected.dielineOnly) {
                         pTopMM = detected.dielineOnly.topMM;
-                    } else if (boxCfg.customHeaderTrimHeight && Number(boxCfg.customHeaderTrimHeight) > 0) {
+                    } else if (shouldTrimHeader && boxCfg.customHeaderTrimHeight && Number(boxCfg.customHeaderTrimHeight) > 0) {
                         // User explicitly requested extra manual header trimming
                         pTopMM += Number(boxCfg.customHeaderTrimHeight);
                     }
