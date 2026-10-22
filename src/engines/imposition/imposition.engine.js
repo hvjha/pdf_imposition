@@ -3041,10 +3041,12 @@ const imposePdf = async ({
      */
     const boxCfg = normalizedConfig.boxConfig || layoutConfig.boxConfig || {};
     const isBoxJob = normalizedConfig.productCategory === "BOX" ||
+                     normalizedConfig.productType === "BOX" ||
                      layoutConfig.mode === "BOX" ||
                      layoutConfig.mode === "PACKAGING" ||
                      pattern?.mode === "BOX" ||
-                     pattern?.mode === "PACKAGING";
+                     pattern?.mode === "PACKAGING" ||
+                     Boolean(boxCfg && (boxCfg.isBoxJob || boxCfg.boxStyle || boxCfg.flatWidth > 0 || boxCfg.length > 0 || boxCfg.multiPageGang));
 
     const isInchUnit = boxCfg.unit === "inch" || boxCfg.unit === "in";
     const unitFactor = isInchUnit ? 25.4 : 1;
