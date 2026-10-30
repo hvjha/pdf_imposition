@@ -440,12 +440,66 @@ const detectContentBoundingBox = (page) => {
         let lastClipRect = null;
         let lastCm = null;
 
+        let inBT = false;
+        let tm = [1, 0, 0, 1, 0, 0];
+        let tlm = [1, 0, 0, 1, 0, 0];
+        let textLeading = 12;
+
         for (let i = 0; i < rawTokens.length; i++) {
             const t = rawTokens[i];
             if (t === 'q') {
                 ctmStack.push([...ctmStack[ctmStack.length - 1]]);
             } else if (t === 'Q') {
                 if (ctmStack.length > 1) ctmStack.pop();
+            } else if (t === 'BT') {
+                inBT = true;
+                tm = [1, 0, 0, 1, 0, 0];
+                tlm = [1, 0, 0, 1, 0, 0];
+            } else if (t === 'ET') {
+                inBT = false;
+            } else if (inBT && t === 'Tm') {
+                const a = parseFloat(rawTokens[i - 6]);
+                const b = parseFloat(rawTokens[i - 5]);
+                const c = parseFloat(rawTokens[i - 4]);
+                const d = parseFloat(rawTokens[i - 3]);
+                const e = parseFloat(rawTokens[i - 2]);
+                const f = parseFloat(rawTokens[i - 1]);
+                if (Number.isFinite(a) && Number.isFinite(b) && Number.isFinite(c) && Number.isFinite(d) && Number.isFinite(e) && Number.isFinite(f)) {
+                    tm = [a, b, c, d, e, f];
+                    tlm = [a, b, c, d, e, f];
+                    const ctm = ctmStack[ctmStack.length - 1];
+                    const pt = transformPoint({ x: e, y: f }, ctm);
+                    if (pt.x >= searchBox.x - 5 && pt.x <= searchBox.x + searchBox.width + 5 &&
+                        pt.y >= searchBox.y - 5 && pt.y <= searchBox.y + searchBox.height + 5) {
+                        paintedElements.push({ minX: pt.x, minY: pt.y, maxX: pt.x + 15, maxY: pt.y + 10, isText: true });
+                    }
+                }
+            } else if (inBT && (t === 'Td' || t === 'TD')) {
+                const tx = parseFloat(rawTokens[i - 2]);
+                const ty = parseFloat(rawTokens[i - 1]);
+                if (Number.isFinite(tx) && Number.isFinite(ty)) {
+                    if (t === 'TD') textLeading = -ty;
+                    tlm = [tlm[0], tlm[1], tlm[2], tlm[3], tlm[4] + tx, tlm[5] + ty];
+                    tm = [...tlm];
+                    const ctm = ctmStack[ctmStack.length - 1];
+                    const pt = transformPoint({ x: tm[4], y: tm[5] }, ctm);
+                    if (pt.x >= searchBox.x - 5 && pt.x <= searchBox.x + searchBox.width + 5 &&
+                        pt.y >= searchBox.y - 5 && pt.y <= searchBox.y + searchBox.height + 5) {
+                        paintedElements.push({ minX: pt.x, minY: pt.y, maxX: pt.x + 15, maxY: pt.y + 10, isText: true });
+                    }
+                }
+            } else if (inBT && t === 'TL') {
+                const lead = parseFloat(rawTokens[i - 1]);
+                if (Number.isFinite(lead)) textLeading = lead;
+            } else if (inBT && t === 'T*') {
+                tlm = [tlm[0], tlm[1], tlm[2], tlm[3], tlm[4], tlm[5] - textLeading];
+                tm = [...tlm];
+                const ctm = ctmStack[ctmStack.length - 1];
+                const pt = transformPoint({ x: tm[4], y: tm[5] }, ctm);
+                if (pt.x >= searchBox.x - 5 && pt.x <= searchBox.x + searchBox.width + 5 &&
+                    pt.y >= searchBox.y - 5 && pt.y <= searchBox.y + searchBox.height + 5) {
+                    paintedElements.push({ minX: pt.x, minY: pt.y, maxX: pt.x + 15, maxY: pt.y + 10, isText: true });
+                }
             } else if (t === 'cm') {
                 const a = parseFloat(rawTokens[i - 6]);
                 const b = parseFloat(rawTokens[i - 5]);
@@ -538,25 +592,8 @@ const detectContentBoundingBox = (page) => {
             }
         }
 
-        // Text operators inside BT ... ET (capturing title headers and text)
-        const btRegex = /BT([\s\S]*?)ET/g;
-        let btMatch;
-        while ((btMatch = btRegex.exec(streamText)) !== null) {
-            const btContent = btMatch[1];
-            const tdRegex = /([0-9\.-]+)\s+([0-9\.-]+)\s+(?:Td|TD)/g;
-            let tdMatch;
-            while ((tdMatch = tdRegex.exec(btContent)) !== null) {
-                const tx = parseFloat(tdMatch[1]);
-                const ty = parseFloat(tdMatch[2]);
-                if (Number.isFinite(tx) && Number.isFinite(ty)) {
-                    if (tx >= searchBox.x - 5 && tx <= searchBox.x + searchBox.width + 5 &&
-                        ty >= searchBox.y - 5 && ty <= searchBox.y + searchBox.height + 5) {
-                        paintedElements.push({ minX: tx, minY: ty, maxX: tx + 15, maxY: ty + 10, isText: true });
-                    }
-                }
+        // Text operators properly parsed inside main token loop with transformation matrices
             }
-        }
-    }
 
     // 3. Fallback to ArtBox or TrimBox if no stream elements found
     if (paintedElements.length === 0) {
