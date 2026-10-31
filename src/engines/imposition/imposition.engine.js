@@ -2013,10 +2013,10 @@ const buildLayoutSide = ({
         // Apply individual up offset (when operator drags individual ups)
         if (boxConfig && boxConfig.upOffsets) {
             const indOffset = boxConfig.upOffsets[upIndex] || boxConfig.upOffsets[String(upIndex)];
-            if (indOffset) {
-                const offUnit = boxConfig.unit === "inch" ? "inch" : "mm";
-                const offX = toPoints(Number(indOffset.x || 0), offUnit);
-                const offY = toPoints(Number(indOffset.y || 0), offUnit);
+            if (indOffset && (indOffset.x || indOffset.y)) {
+                // Drag offsets from SheetPreview SVG coordinate space are ALWAYS in millimeters (mm)
+                const offX = toPoints(Number(indOffset.x || 0), "mm");
+                const offY = toPoints(Number(indOffset.y || 0), "mm");
                 posX += offX;
                 posY -= offY;
             }
@@ -2086,6 +2086,25 @@ const validatePlacements = ({
         );
     }
 
+    // In manual imposition, ensure sheet is auto-expanded to fit any dragged placements
+    if (sheet) {
+        for (const p of placements) {
+            if (p.x + p.width > sheet.width) {
+                sheet.width = Math.ceil(p.x + p.width + 10);
+            }
+            if (p.y + p.height > sheet.height) {
+                sheet.height = Math.ceil(p.y + p.height + 10);
+            }
+            if (p.x < 0) {
+                sheet.width += Math.ceil(-p.x + 10);
+                p.x = 10;
+            }
+            if (p.y < 0) {
+                sheet.height += Math.ceil(-p.y + 10);
+                p.y = 10;
+            }
+        }
+    }
 
     for (
         const placement
