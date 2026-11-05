@@ -163,11 +163,13 @@ const normalizeRotation = (
 
 const convertMeasurement = (
     value,
-    unit = "pt"
+    unit = "pt",
+    defaultValue = 0
 ) => {
-
+    const num = Number(value);
+    const safeVal = Number.isFinite(num) ? num : defaultValue;
     return toPoints(
-        Number(value),
+        safeVal,
         unit
     );
 };
@@ -394,23 +396,38 @@ const normalizeSheet = (
         config.sheet ??
         {};
 
+    const rawWidth =
+        source.width ??
+        config.sheetWidth ??
+        config.width ??
+        source.sheetWidth ??
+        508;
+
+    const rawHeight =
+        source.height ??
+        config.sheetHeight ??
+        config.height ??
+        source.sheetHeight ??
+        711.2;
 
     const unit =
         source.unit ??
-        "pt";
-
+        config.sheetUnit ??
+        config.unit ??
+        (config.packaging?.unit || (Number(rawWidth) > 100 ? "mm" : "pt"));
 
     const width =
         convertMeasurement(
-            source.width,
-            unit
+            rawWidth,
+            unit,
+            508
         );
-
 
     const height =
         convertMeasurement(
-            source.height,
-            unit
+            rawHeight,
+            unit,
+            711.2
         );
 
 
@@ -873,13 +890,19 @@ const normalizeLayout = (
         {};
 
 
+    const gangCount = (config.packaging?.gangPlacements || config.boxConfig?.gangPlacements) 
+        ? Object.keys(config.packaging?.gangPlacements || config.boxConfig?.gangPlacements).length 
+        : null;
     const pagesPerLayout =
         Number(
+            gangCount ??
             source.pagesPerLayout ??
             source.pageCount ??
             ((config.grid?.columns && config.grid?.rows)
                 ? (Number(config.grid.columns) * Number(config.grid.rows))
-                : 1)
+                : ((config.packaging?.columns && config.packaging?.rows)
+                    ? (Number(config.packaging.columns) * Number(config.packaging.rows))
+                    : 1))
         );
 
 
@@ -949,6 +972,15 @@ const normalizeLayout = (
 const normalizeConfig = (
     config
 ) => {
+    // Lift packaging config to root boxConfig if provided under packaging
+    if (config.packaging && !config.boxConfig) {
+        config.boxConfig = config.packaging;
+    } else if (config.packaging && config.boxConfig) {
+        config.boxConfig = { ...config.packaging, ...config.boxConfig };
+    }
+    if (config.packaging?.gangPlacements && !config.boxConfig?.gangPlacements) {
+        config.boxConfig.gangPlacements = config.packaging.gangPlacements;
+    }
 
     const sheet =
         normalizeSheet(
@@ -1742,6 +1774,8 @@ const calculateGeometry = ({
 
         margins,
 
+        sheetWidth: sheet.width,
+        sheetHeight: sheet.height,
         cropClearance
 
     };
@@ -1856,10 +1890,10 @@ const buildLocalSide = ({
                     position.y,
 
                 width:
-                    geometry.pageWidth,
+                placedWidth,
 
-                height:
-                    geometry.pageHeight,
+            height:
+                placedHeight,
 
                 rotation:
                     normalizeRotation(
@@ -1953,8 +1987,21 @@ const buildLayoutSide = ({
                 ? targetPage
                 : (pageOffset + localPageNumber);
 
-        // Support multi-page gang and explicit per-up page allocation
-        if (boxConfig) {
+        let gp = null;
+        let isGangPlaced = false;
+
+        // Support explicit gangPlacements for multi-file 2-4 items packing or live canvas placement
+        if (boxConfig && boxConfig.gangPlacements) {
+            gp = boxConfig.gangPlacements[upIndex] ?? boxConfig.gangPlacements[String(upIndex)];
+            if (!gp) {
+                // If explicit gang placements are provided, skip any slots not placed!
+                continue;
+            }
+            isGangPlaced = true;
+            if (gp.pageNumber !== undefined && gp.pageNumber !== null) {
+                sourcePageNumber = Number(gp.pageNumber);
+            }
+        } else if (boxConfig) {
             if (boxConfig.pageAllocation && boxConfig.pageAllocation[upIndex] !== undefined) {
                 sourcePageNumber = Number(boxConfig.pageAllocation[upIndex]);
             } else if (boxConfig.pageAllocation && boxConfig.pageAllocation[String(upIndex)] !== undefined) {
@@ -1996,8 +2043,16 @@ const buildLayoutSide = ({
 
             });
 
-        const effectiveRotation =
-            ((Number(entry.rotation) || 0) + (Number(pageRotation) || 0)) % 360;
+        let indRot = 0;
+        if (boxConfig && boxConfig.upRotations) {
+            const rVal = boxConfig.upRotations[upIndex] ?? boxConfig.upRotations[String(upIndex)];
+            if (rVal !== undefined && rVal !== null) {
+                indRot = Number(rVal) || 0;
+            }
+        }
+
+        let effectiveRotation =
+            ((Number(entry.rotation) || 0) + (Number(pageRotation) || 0) + indRot) % 360;
 
         let posX = position.x;
         let posY = position.y;
@@ -2010,8 +2065,35 @@ const buildLayoutSide = ({
             posY += shiftY;
         }
 
-        // Apply individual up offset (when operator drags individual ups)
-        if (boxConfig && boxConfig.upOffsets) {
+                let placedWidth = geometry.pageWidth;
+        let placedHeight = geometry.pageHeight;
+
+        if (isGangPlaced && gp) {
+            if (gp.rotation !== undefined) {
+                effectiveRotation = Number(gp.rotation) % 360;
+            }
+            if (gp.widthMM !== undefined) {
+                placedWidth = toPoints(Number(gp.widthMM), "mm");
+            }
+            if (gp.heightMM !== undefined) {
+                placedHeight = toPoints(Number(gp.heightMM), "mm");
+            }
+            const isVisualRot = (effectiveRotation === 90 || effectiveRotation === 270);
+            const visualHeightPt = gp.visualHeightMM !== undefined
+                ? toPoints(Number(gp.visualHeightMM), "mm")
+                : (isVisualRot ? placedWidth : placedHeight);
+
+            if (gp.xMM !== undefined) {
+                posX = Math.max(0, toPoints(Number(gp.xMM), "mm"));
+            }
+            if (gp.yMM !== undefined) {
+                const shPt = geometry.sheetHeight || (geometry.sheet?.height || 0);
+                posY = Math.max(0, shPt - toPoints(Number(gp.yMM), "mm") - visualHeightPt);
+            }
+        }
+
+        // Apply individual up offset only for standard auto-grid layouts without explicit gang placement
+        if (!isGangPlaced && boxConfig && boxConfig.upOffsets) {
             const indOffset = boxConfig.upOffsets[upIndex] || boxConfig.upOffsets[String(upIndex)];
             if (indOffset && (indOffset.x || indOffset.y)) {
                 // Drag offsets from SheetPreview SVG coordinate space are ALWAYS in millimeters (mm)
@@ -2046,10 +2128,10 @@ const buildLayoutSide = ({
                 posY,
 
             width:
-                geometry.pageWidth,
+                placedWidth || geometry.pageWidth,
 
             height:
-                geometry.pageHeight,
+                placedHeight || geometry.pageHeight,
 
             rotation:
                 normalizeRotation(
@@ -2394,17 +2476,19 @@ const buildAllPhysicalLayouts = ({
     const isMultiPageGang =
         Boolean(
             boxConfig &&
-            (boxConfig.multiPageGang || boxConfig.isMultiPageGang) &&
+            (boxConfig.multiPageGang || boxConfig.isMultiPageGang || boxConfig.gangPlacements || boxConfig.isGangJob) &&
             sourcePageCount > 1
         );
 
     const layoutCount =
         isBoxMode
-            ? (isDuplexBox
-                ? Math.max(1, Math.ceil(sourcePageCount / 2))
-                : (isMultiPageGang
-                    ? Math.max(1, Math.ceil(sourcePageCount / pagesPerLayout))
-                    : Math.max(1, sourcePageCount)))
+            ? (boxConfig?.gangPlacements
+                ? 1
+                : (isDuplexBox
+                    ? Math.max(1, Math.ceil(sourcePageCount / 2))
+                    : (isMultiPageGang
+                        ? Math.max(1, Math.ceil(sourcePageCount / pagesPerLayout))
+                        : Math.max(1, sourcePageCount))))
             : Math.ceil(
                 sourcePageCount /
                 pagesPerLayout
@@ -2653,7 +2737,8 @@ const drawSourcePage = async ({
 
     // Box Auto-Crop White Space Handling
     const boxCfg = marks?.boxConfig || {};
-    const isTightCad = Boolean(boxCfg.tightCadPack || boxCfg.removeWhiteSpace !== false);
+    const isGangRunPage = Boolean(marks?.isGangJob || marks?.boxConfig?.isGangJob || marks?.boxConfig?.multiPageGang || marks?.boxConfig?.gangPlacements || sourcePdf.getPageCount() > 1);
+    const isTightCad = Boolean(boxCfg.tightCadPack || boxCfg.removeWhiteSpace !== false) && !isGangRunPage;
     if ((marks?.mode === "BOX" || marks?.isBoxJob) && isTightCad) {
         const mediaBox = sourcePage.getMediaBox();
         const trimBox = sourcePage.getTrimBox();
@@ -2685,19 +2770,25 @@ const drawSourcePage = async ({
     const crop = (sourcePage.getCropBox && sourcePage.getCropBox()) || sourcePage.getMediaBox();
     const media = sourcePage.getMediaBox();
     let boundingBox = undefined;
-    if (crop && (crop.width < media.width - 0.5 || crop.height < media.height - 0.5 || Math.abs(crop.x - media.x) > 0.5 || Math.abs(crop.y - media.y) > 0.5)) {
+    let transformationMatrix = undefined;
+
+    // In pdf-lib, passing boundingBox { left: crop.x, bottom: crop.y, right: crop.x + crop.width, top: crop.y + crop.height }
+    // automatically clips to CropBox AND generates the correct boundingBoxAdjustedMatrix: [1, 0, 0, 1, -crop.x, -crop.y]!
+    if (crop && (Math.abs(crop.x) > 0.5 || Math.abs(crop.y) > 0.5 || crop.width < media.width - 0.5 || crop.height < media.height - 0.5)) {
         boundingBox = {
             left: crop.x,
             bottom: crop.y,
             right: crop.x + crop.width,
             top: crop.y + crop.height
         };
+        transformationMatrix = undefined;
     }
 
     const embeddedPage =
         await outputPdf.embedPage(
             sourcePage,
-            boundingBox
+            boundingBox,
+            transformationMatrix
         );
 
 
@@ -3008,30 +3099,38 @@ const imposePdf = async ({
      * --------------------------------------------------------
      */
 
-    const pattern =
-        resolveFoldPattern({
+    const activeBoxCfg = normalizedConfig.boxConfig || layoutConfig.boxConfig || normalizedConfig.packaging || {};
+    const isGang = Boolean(activeBoxCfg.gangPlacements || activeBoxCfg.multiPageGang || activeBoxCfg.isGangJob || normalizedConfig.isGangJob);
+    const resolvedCols = isGang 
+        ? Math.max(1, Number(activeBoxCfg.columns || normalizedConfig.grid?.columns || layoutConfig.columns || 2)) 
+        : (layoutConfig.columns ?? layoutConfig.cols ?? normalizedConfig.grid?.columns);
+    const resolvedRows = isGang 
+        ? Math.max(1, Number(activeBoxCfg.rows || normalizedConfig.grid?.rows || layoutConfig.rows || (activeBoxCfg.gangPlacements ? Math.ceil(Object.keys(activeBoxCfg.gangPlacements).length / (activeBoxCfg.columns || normalizedConfig.grid?.columns || layoutConfig.columns || 2)) : 1))) 
+        : (layoutConfig.rows ?? normalizedConfig.grid?.rows);
+    const resolvedPPL = isGang ? (resolvedCols * resolvedRows) : pagesPerLayout;
 
-            pagesPerLayout,
+    const pattern = resolveFoldPattern({
+
+            pagesPerLayout: resolvedPPL,
 
             patternId:
                 layoutConfig.patternId,
 
             mode:
-                layoutConfig.mode || (normalizedConfig.productCategory === "BOX" ? "BOX" : null),
+                layoutConfig.mode || (isGang || normalizedConfig.productCategory === "BOX" ? "BOX" : null),
 
             columns:
-                layoutConfig.columns ?? layoutConfig.cols,
+                resolvedCols ?? (layoutConfig.columns ?? layoutConfig.cols),
 
             rows:
-                layoutConfig.rows,
+                resolvedRows ?? layoutConfig.rows,
 
             interlockMode:
                 layoutConfig.interlockMode || normalizedConfig.boxConfig?.interlockMode || "STANDARD"
 
         });
-    if (
-        !pattern
-    ) {
+    console.log("[DEBUG ENGINE] pattern front count:", pattern?.front?.length, "cols:", pattern?.columns, "rows:", pattern?.rows);
+    if (!pattern) {
 
         throw new Error(
             `No fold pattern found for ${pagesPerLayout}PP.`
@@ -3075,13 +3174,22 @@ const imposePdf = async ({
     let trimBottomMM = Number(boxCfg.trimBottomMM ?? (boxCfg.trimBottom != null ? boxCfg.trimBottom * unitFactor : normalizedConfig.trimMargins?.bottom ?? 0));
 
     // Auto-detect and trim white space per page for box mode
+    // When doing gang run imposition (multi-file or multiPageGang), NEVER trim drawing title headers from individual artworks
+    const isGangRunJob = Boolean(
+        boxCfg.gangPlacements ||
+        boxCfg.multiPageGang ||
+        boxCfg.isMultiPageGang ||
+        boxCfg.isGangJob ||
+        normalizedConfig.isGangJob ||
+        sourcePdf.getPageCount() > 1
+    );
     const hasManualTrim = trimTopMM > 0 || trimBottomMM > 0 || trimLeftMM > 0 || trimRightMM > 0;
-    const autoTrimActive = boxCfg.removeWhiteSpace !== false;
+    const autoTrimActive = boxCfg.removeWhiteSpace !== false && !isGangRunJob;
     let anyTrimApplied = false;
     const pageTrimmedWidths = [];
     const pageTrimmedHeights = [];
 
-    if (hasManualTrim || (isBoxJob && autoTrimActive)) {
+    if ((hasManualTrim && !isGangRunJob) || (isBoxJob && autoTrimActive)) {
         for (let i = 0; i < sourcePdf.getPageCount(); i++) {
             const page = sourcePdf.getPage(i);
             const mediaBox = page.getMediaBox();
@@ -3095,7 +3203,7 @@ const imposePdf = async ({
                 const detected = detectContentBoundingBox(page);
                 if (detected) {
                     // In packaging box imposition, only trim single-up drawing title headers when explicitly enabled
-                    const shouldTrimHeader = Boolean(boxCfg.trimHeader);
+                    const shouldTrimHeader = Boolean(boxCfg.trimHeader) && !isGangRunJob;
                     const targetBox = (shouldTrimHeader && detected.dielineOnly) ? detected.dielineOnly : detected;
                     pLeftMM = targetBox.leftMM;
                     pRightMM = targetBox.rightMM;
@@ -3145,7 +3253,7 @@ const imposePdf = async ({
         normalizedConfig.fitMode = "NONE";
 
         // Fallback to configured box flat dimensions if automatic vector path trim wasn't triggered
-        if ((!anyTrimApplied || !source.width || source.width <= 0) && normalizedConfig.bookSize && normalizedConfig.bookSize.width > 0 && normalizedConfig.bookSize.height > 0) {
+        if (!isGangRunJob && (!anyTrimApplied || !source.width || source.width <= 0) && normalizedConfig.bookSize && normalizedConfig.bookSize.width > 0 && normalizedConfig.bookSize.height > 0) {
             source.width = normalizedConfig.bookSize.width;
             source.height = normalizedConfig.bookSize.height;
         }
@@ -3233,7 +3341,8 @@ const imposePdf = async ({
             sourcePageCount:
                 source.pageCount,
 
-            pagesPerLayout,
+            pagesPerLayout:
+                resolvedPPL,
 
             sheet,
 

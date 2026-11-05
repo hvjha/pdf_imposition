@@ -875,7 +875,9 @@ const drawProductionMarks = ({
         marks?.jobInfo ??
         Boolean(jobInfo);
 
-    if (jobSlugEnabled || isBoxMode) {
+    // When doing Gang Run imposition, suppress automated CAD title header slug to keep sheet clean
+    const isGangRun = Boolean(marks?.isGangJob || marks?.boxConfig?.isGangJob || marks?.boxConfig?.multiPageGang || marks?.boxConfig?.gangPlacements || marks?.jobSlug === false);
+    if ((jobSlugEnabled || isBoxMode) && !isGangRun) {
         drawJobSlug({
             page,
             pageWidth,

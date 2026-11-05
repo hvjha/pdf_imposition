@@ -163,9 +163,43 @@ const imposePdf = async (
                 : {};
 
 
+        // In gang runs or when requestConfig explicitly specifies gang/packaging settings,
+        // do NOT let savedConfig single-carton trims (e.g. trimTop, trimMargins) bleed into requestConfig!
+        const isGangRequest = Boolean(
+            requestConfig.packaging?.gangPlacements ||
+            requestConfig.packaging?.multiPageGang ||
+            requestConfig.boxConfig?.gangPlacements ||
+            requestConfig.boxConfig?.multiPageGang ||
+            requestConfig.boxConfig?.isGangJob ||
+            requestConfig.isGangJob ||
+            job.productionConfig?.isGangJob
+        );
+
+        let baseConfig = { ...savedConfig };
+        if (isGangRequest) {
+            delete baseConfig.trimMargins;
+            delete baseConfig.trimTop;
+            delete baseConfig.trimBottom;
+            delete baseConfig.trimLeft;
+            delete baseConfig.trimRight;
+            if (baseConfig.boxConfig) {
+                baseConfig.boxConfig = { ...baseConfig.boxConfig };
+                delete baseConfig.boxConfig.trimMargins;
+                delete baseConfig.boxConfig.trimTop;
+                delete baseConfig.boxConfig.trimBottom;
+                delete baseConfig.boxConfig.trimLeft;
+                delete baseConfig.boxConfig.trimRight;
+                delete baseConfig.boxConfig.trimTopMM;
+                delete baseConfig.boxConfig.trimBottomMM;
+                delete baseConfig.boxConfig.trimLeftMM;
+                delete baseConfig.boxConfig.trimRightMM;
+                baseConfig.boxConfig.removeWhiteSpace = false;
+            }
+        }
+
         const config = {
 
-            ...savedConfig,
+            ...baseConfig,
 
             ...requestConfig
         };
